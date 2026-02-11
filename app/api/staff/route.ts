@@ -2,6 +2,8 @@ import { supabase } from '@/lib/supabase';
 import { Staff } from '@/types';
 import { NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   const { data, error } = await supabase
     .from('staff')
@@ -48,6 +50,10 @@ export async function DELETE(request: Request) {
     if (!id) {
       return NextResponse.json({ error: 'Missing id' }, { status: 400 });
     }
+
+    // Delete related records first to avoid FK constraint errors
+    await supabase.from('wanted_offs').delete().eq('staff_id', id);
+    await supabase.from('schedules').delete().eq('staff_id', id);
 
     const { error } = await supabase
       .from('staff')
