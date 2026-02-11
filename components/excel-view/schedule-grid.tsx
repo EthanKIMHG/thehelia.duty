@@ -10,13 +10,13 @@ import { cn } from "@/lib/utils"
 import { format } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { useEffect, useState } from 'react'
+import { WantedOffSheet } from "./wanted-off-dialog"
 
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
 } from "@/components/ui/popover"
-import { WantedOffDialog } from "./wanted-off-dialog"
 
 interface DateObj {
     date: Date
@@ -435,7 +435,7 @@ export function ScheduleGrid({ dates, staffMembers, onCellClick, dailyWarnings, 
       </Table>
       
       {selectedStaffForOff && (
-        <WantedOffDialog 
+        <WantedOffSheet 
             open={isOffDialogOpen} 
             onOpenChange={setIsOffDialogOpen}
             staff={selectedStaffForOff}
