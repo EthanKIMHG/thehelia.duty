@@ -24,10 +24,11 @@ import {
 } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
 import { authFetch } from '@/lib/api'
+import { cn } from '@/lib/utils'
 import { Staff } from '@/types'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Loader2, Pencil, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { GripVertical, Loader2, Pencil, Trash2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
 
 export function StaffList() {
   const { toast } = useToast()
@@ -38,6 +39,10 @@ export function StaffList() {
   const [newName, setNewName] = useState('')
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [orderedStaff, setOrderedStaff] = useState<Staff[]>([])
+  const [draggingStaffId, setDraggingStaffId] = useState<string | null>(null)
+  const [dragOverStaffId, setDragOverStaffId] = useState<string | null>(null)
+  const [dragHandleStaffId, setDragHandleStaffId] = useState<string | null>(null)
 
   const { isPending, error, data } = useQuery<Staff[]>({
     queryKey: ['staff'],
@@ -110,6 +115,37 @@ export function StaffList() {
       }
   }
 
+  useEffect(() => {
+    setOrderedStaff((prev) => {
+      const nextData = data || []
+      if (!prev.length) return nextData
+
+      const nextById = new Map(nextData.map((staff) => [staff.id, staff]))
+      const kept = prev
+        .map((staff) => nextById.get(staff.id))
+        .filter((staff): staff is Staff => Boolean(staff))
+
+      const existingIds = new Set(kept.map((staff) => staff.id))
+      const appended = nextData.filter((staff) => !existingIds.has(staff.id))
+
+      return [...kept, ...appended]
+    })
+  }, [data])
+
+  const reorderStaff = (sourceId: string, targetId: string) => {
+    if (!sourceId || !targetId || sourceId === targetId) return
+    setOrderedStaff((prev) => {
+      const sourceIndex = prev.findIndex((staff) => staff.id === sourceId)
+      const targetIndex = prev.findIndex((staff) => staff.id === targetId)
+      if (sourceIndex < 0 || targetIndex < 0) return prev
+
+      const next = [...prev]
+      const [moved] = next.splice(sourceIndex, 1)
+      next.splice(targetIndex, 0, moved)
+      return next
+    })
+  }
+
   if (isPending) return <StaffListSkeleton />
 
   if (error) return <div className="text-red-500">An error has occurred: {error.message}</div>
@@ -132,9 +168,61 @@ export function StaffList() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {data?.map((staff) => (
-              <TableRow key={staff.id}>
-                <TableCell className="font-medium">{staff.name}</TableCell>
+            {orderedStaff.map((staff) => (
+              <TableRow
+                key={staff.id}
+                draggable={dragHandleStaffId === staff.id}
+                onDragStart={(e) => {
+                  if (dragHandleStaffId !== staff.id) {
+                    e.preventDefault()
+                    return
+                  }
+                  setDraggingStaffId(staff.id)
+                  e.dataTransfer.effectAllowed = 'move'
+                }}
+                onDragOver={(e) => {
+                  if (!draggingStaffId || draggingStaffId === staff.id) return
+                  e.preventDefault()
+                  e.dataTransfer.dropEffect = 'move'
+                  setDragOverStaffId(staff.id)
+                }}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  if (!draggingStaffId || draggingStaffId === staff.id) return
+                  reorderStaff(draggingStaffId, staff.id)
+                  setDragOverStaffId(null)
+                }}
+                onDragEnd={() => {
+                  setDraggingStaffId(null)
+                  setDragOverStaffId(null)
+                  setDragHandleStaffId(null)
+                }}
+                className={cn(
+                  draggingStaffId === staff.id && 'opacity-50',
+                  dragOverStaffId === staff.id && draggingStaffId !== staff.id && 'bg-primary/10'
+                )}
+              >
+                <TableCell className="font-medium">
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground"
+                      onMouseDown={() => setDragHandleStaffId(staff.id)}
+                      onMouseUp={() => setDragHandleStaffId(null)}
+                      onMouseLeave={() => {
+                        if (draggingStaffId !== staff.id) {
+                          setDragHandleStaffId(null)
+                        }
+                      }}
+                      title="드래그해서 순서 변경"
+                    >
+                      <GripVertical className="h-4 w-4" />
+                    </Button>
+                    <span>{staff.name}</span>
+                  </div>
+                </TableCell>
                 <TableCell>
                   <Badge variant={staff.job_title === 'nurse' ? 'default' : 'secondary'}>
                       {staff.job_title === 'nurse' ? '간호사' : '조무사'}
@@ -154,7 +242,7 @@ export function StaffList() {
                 </TableCell>
               </TableRow>
             ))}
-            {data?.length === 0 && (
+            {orderedStaff.length === 0 && (
               <TableRow>
                   <TableCell colSpan={5} className="text-center h-24 text-muted-foreground">
                       등록된 직원이 없습니다.
@@ -167,15 +255,64 @@ export function StaffList() {
 
       {/* Mobile Card View */}
       <div className="md:hidden space-y-4 p-4">
-        {data?.length === 0 && (
+        {orderedStaff.length === 0 && (
           <div className="text-center py-8 text-muted-foreground">
              등록된 직원이 없습니다.
           </div>
         )}
-        {data?.map((staff) => (
-          <Card key={staff.id} className="overflow-hidden">
+        {orderedStaff.map((staff) => (
+          <Card
+            key={staff.id}
+            className={cn(
+              "overflow-hidden",
+              draggingStaffId === staff.id && 'opacity-50',
+              dragOverStaffId === staff.id && draggingStaffId !== staff.id && 'bg-primary/10'
+            )}
+            draggable={dragHandleStaffId === staff.id}
+            onDragStart={(e) => {
+              if (dragHandleStaffId !== staff.id) {
+                e.preventDefault()
+                return
+              }
+              setDraggingStaffId(staff.id)
+              e.dataTransfer.effectAllowed = 'move'
+            }}
+            onDragOver={(e) => {
+              if (!draggingStaffId || draggingStaffId === staff.id) return
+              e.preventDefault()
+              e.dataTransfer.dropEffect = 'move'
+              setDragOverStaffId(staff.id)
+            }}
+            onDrop={(e) => {
+              e.preventDefault()
+              if (!draggingStaffId || draggingStaffId === staff.id) return
+              reorderStaff(draggingStaffId, staff.id)
+              setDragOverStaffId(null)
+            }}
+            onDragEnd={() => {
+              setDraggingStaffId(null)
+              setDragOverStaffId(null)
+              setDragHandleStaffId(null)
+            }}
+          >
             <CardHeader className="p-4 pb-2 flex flex-row items-center justify-between space-y-0">
               <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground"
+                    onMouseDown={() => setDragHandleStaffId(staff.id)}
+                    onMouseUp={() => setDragHandleStaffId(null)}
+                    onMouseLeave={() => {
+                      if (draggingStaffId !== staff.id) {
+                        setDragHandleStaffId(null)
+                      }
+                    }}
+                    title="드래그해서 순서 변경"
+                  >
+                    <GripVertical className="h-4 w-4" />
+                  </Button>
                   <CardTitle className="text-base font-bold">{staff.name}</CardTitle>
                   <Badge variant={staff.job_title === 'nurse' ? 'default' : 'secondary'}>
                       {staff.job_title === 'nurse' ? '간호사' : '조무사'}

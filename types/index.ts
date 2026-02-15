@@ -29,11 +29,22 @@ export interface Room {
 
 export type StayStatus = 'upcoming' | 'active' | 'completed';
 
+export interface BabyProfile {
+  name?: string | null;
+  gender?: string | null;
+  weight?: number | null;
+}
+
 export interface Stay {
   id: string;
   room_number: string;
   mother_name: string;
   baby_count: number;
+  baby_names?: string[];
+  baby_profiles?: BabyProfile[];
+  gender?: string | null;
+  baby_weight?: number | null;
+  birth_hospital?: string | null;
   check_in_date: string;
   check_out_date: string;
   edu_date?: string;

@@ -8,29 +8,20 @@ const supabase = createClient(
 
 export async function GET() {
   try {
-    // Query stays table directly for consistent logic (bypassing potentially outdated view)
-    const today = new Date().toISOString().split('T')[0]
+    const { data, error } = await supabase
+      .from('v_dashboard_stats_kst')
+      .select('total_newborns, total_mothers')
+      .single()
 
-    // Logic: Count stays where CheckIn <= Today AND CheckOut > Today.
-    // This excludes babies checking out today (as they leave at 10am)
-    // and includes babies checking in today (as they arrive at 11am).
-    // This provides the "Peak/Afternoon Census".
-    const { data: stays, error: staysError } = await supabase
-      .from('stays')
-      .select('baby_count')
-      .eq('status', 'active')
-      .lte('check_in_date', today)
-      .gt('check_out_date', today)
-
-    if (staysError) {
-      console.error('Error fetching stays stats:', staysError)
-      return NextResponse.json({ error: staysError.message }, { status: 500 })
+    if (error) {
+      console.error('Error fetching dashboard stats:', error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    const totalNewborns = stays?.reduce((acc, s) => acc + (s.baby_count || 0), 0) || 0
-    const totalMothers = stays?.length || 0
-
-    return NextResponse.json({ total_newborns: totalNewborns, total_mothers: totalMothers })
+    return NextResponse.json({
+      total_newborns: data?.total_newborns ?? 0,
+      total_mothers: data?.total_mothers ?? 0
+    })
 
   } catch (e) {
     console.error('Request error:', e)

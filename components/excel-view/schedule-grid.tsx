@@ -9,6 +9,7 @@ import { parseShift } from "@/lib/shift-utils"
 import { cn } from "@/lib/utils"
 import { format } from 'date-fns'
 import { ko } from 'date-fns/locale'
+import { GripVertical } from "lucide-react"
 import { useEffect, useState } from 'react'
 import { WantedOffSheet } from "./wanted-off-dialog"
 
@@ -50,11 +51,46 @@ export function ScheduleGrid({ dates, staffMembers, onCellClick, dailyWarnings, 
   const [hoveredRow, setHoveredRow] = useState<string | null>(null)
   const [selectedStaffForOff, setSelectedStaffForOff] = useState<any>(null)
   const [isOffDialogOpen, setIsOffDialogOpen] = useState(false)
+  const [orderedStaffMembers, setOrderedStaffMembers] = useState<any[]>(staffMembers)
+  const [draggingStaffId, setDraggingStaffId] = useState<string | null>(null)
+  const [dragOverStaffId, setDragOverStaffId] = useState<string | null>(null)
+  const [dragHandleStaffId, setDragHandleStaffId] = useState<string | null>(null)
   const todayStr = format(new Date(), 'yyyy-MM-dd')
+
+  useEffect(() => {
+    setOrderedStaffMembers((prev) => {
+      if (!prev.length) return staffMembers
+
+      const nextById = new Map(staffMembers.map((staff) => [staff.id, staff]))
+      const kept = prev
+        .map((staff) => nextById.get(staff.id))
+        .filter((staff): staff is any => Boolean(staff))
+
+      const existingIds = new Set(kept.map((staff) => staff.id))
+      const appended = staffMembers.filter((staff) => !existingIds.has(staff.id))
+
+      return [...kept, ...appended]
+    })
+  }, [staffMembers])
 
   const handleStaffClick = (staff: any) => {
     setSelectedStaffForOff(staff)
     setIsOffDialogOpen(true)
+  }
+
+  const reorderStaffMembers = (sourceId: string, targetId: string) => {
+    if (!sourceId || !targetId || sourceId === targetId) return
+
+    setOrderedStaffMembers((prev) => {
+      const sourceIndex = prev.findIndex((staff) => staff.id === sourceId)
+      const targetIndex = prev.findIndex((staff) => staff.id === targetId)
+      if (sourceIndex < 0 || targetIndex < 0) return prev
+
+      const next = [...prev]
+      const [moved] = next.splice(sourceIndex, 1)
+      next.splice(targetIndex, 0, moved)
+      return next
+    })
   }
 
   return (
@@ -62,7 +98,7 @@ export function ScheduleGrid({ dates, staffMembers, onCellClick, dailyWarnings, 
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="min-w-[100px] sticky left-0 bg-background z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+            <TableHead className="min-w-[220px] w-[220px] sticky left-0 bg-background z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
               이름 (직종)
             </TableHead>
             {dates.map((dateObj, i) => {
@@ -95,7 +131,7 @@ export function ScheduleGrid({ dates, staffMembers, onCellClick, dailyWarnings, 
           {/* Newborn Status Row */}
           {dailyWarnings && dailyWarnings.size > 0 && (
             <TableRow className="hover:bg-muted/30 border-b-2 border-primary/20">
-              <TableCell className="min-w-[140px] sticky left-0 bg-background z-20 font-bold text-center shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+              <TableCell className="min-w-[220px] w-[220px] sticky left-0 bg-background z-20 font-bold text-center shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                 <div className="flex items-center justify-center gap-1">
                   <span className="text-xs">👶 신생아 현황</span>
                 </div>
@@ -175,27 +211,75 @@ export function ScheduleGrid({ dates, staffMembers, onCellClick, dailyWarnings, 
             </TableRow>
           )}
 
-          {staffMembers.map((staff) => (
+          {orderedStaffMembers.map((staff) => (
             <TableRow 
               key={staff.id} 
               className={cn(
                 "group transition-colors",
-                hoveredRow === staff.id && "bg-muted/50"
+                hoveredRow === staff.id && "bg-muted/50",
+                draggingStaffId === staff.id && "opacity-50",
+                dragOverStaffId === staff.id && draggingStaffId !== staff.id && "bg-primary/10"
               )}
+              draggable={dragHandleStaffId === staff.id}
+              onDragStart={(e) => {
+                if (dragHandleStaffId !== staff.id) {
+                  e.preventDefault()
+                  return
+                }
+                setDraggingStaffId(staff.id)
+                e.dataTransfer.effectAllowed = 'move'
+              }}
+              onDragOver={(e) => {
+                if (!draggingStaffId || draggingStaffId === staff.id) return
+                e.preventDefault()
+                e.dataTransfer.dropEffect = 'move'
+                setDragOverStaffId(staff.id)
+              }}
+              onDrop={(e) => {
+                e.preventDefault()
+                if (!draggingStaffId || draggingStaffId === staff.id) return
+                reorderStaffMembers(draggingStaffId, staff.id)
+                setDragOverStaffId(null)
+              }}
+              onDragEnd={() => {
+                setDraggingStaffId(null)
+                setDragOverStaffId(null)
+                setDragHandleStaffId(null)
+              }}
               onMouseEnter={() => setHoveredRow(staff.id)}
               onMouseLeave={() => setHoveredRow(null)}
             >
               <TableCell 
-                className="font-medium sticky left-0 bg-background z-30 group-hover:bg-muted/50 transition-colors shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] cursor-pointer hover:bg-muted"
+                className="font-medium min-w-[220px] w-[220px] sticky left-0 bg-background z-30 group-hover:bg-muted/50 transition-colors shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] cursor-pointer hover:bg-muted"
                 onClick={() => handleStaffClick(staff)}
               >
-                  <div className="flex items-center gap-2 w-[100px] px-2 h-full">
+                  <div className="flex items-center gap-2 w-full px-2 h-full">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground"
+                          onMouseDown={(e) => {
+                            e.stopPropagation()
+                            setDragHandleStaffId(staff.id)
+                          }}
+                          onMouseUp={() => setDragHandleStaffId(null)}
+                          onMouseLeave={() => {
+                            if (draggingStaffId !== staff.id) {
+                              setDragHandleStaffId(null)
+                            }
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          title="드래그해서 순서 변경"
+                        >
+                          <GripVertical className="h-4 w-4" />
+                        </Button>
                         <Avatar className="h-6 w-6 shrink-0">
                             <AvatarFallback className="text-[10px] bg-primary/10 text-primary">
                                 {staff.name[0]}
                             </AvatarFallback>
                         </Avatar>
-                        <div className="flex flex-col overflow-hidden">
+                        <div className="flex flex-1 min-w-0 flex-col overflow-hidden">
                             <span className="text-sm leading-none whitespace-nowrap overflow-hidden text-ellipsis">{staff.name}</span>
                             <span className="text-[10px] text-muted-foreground whitespace-nowrap">{staff.role === 'Nurse' ? '간호사' : '조무사'}</span>
                         </div>
@@ -268,7 +352,7 @@ export function ScheduleGrid({ dates, staffMembers, onCellClick, dailyWarnings, 
                 <TableCell colSpan={dates.length + 4} className="p-0 h-3 bg-orange-50/20" />
               </TableRow>
               <TableRow className="hover:bg-muted/30">
-                <TableCell className="sticky left-0 bg-background z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                <TableCell className="min-w-[220px] w-[220px] sticky left-0 bg-background z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                   <div className="flex items-center justify-center">
                     <span className="inline-flex items-center justify-center h-6 px-1.5 rounded text-[10px] font-bold bg-orange-500 text-white whitespace-nowrap">
                       ⚠ 인력
@@ -378,7 +462,7 @@ export function ScheduleGrid({ dates, staffMembers, onCellClick, dailyWarnings, 
 
             return shiftTypes.map(({ key, label, color }) => (
               <TableRow key={key} className="hover:bg-muted/30">
-                <TableCell className="sticky left-0 bg-background z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                <TableCell className="min-w-[220px] w-[220px] sticky left-0 bg-background z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                   <div className="flex items-center justify-center">
                     <span className={cn(
                       "inline-flex items-center justify-center h-6 w-8 rounded text-xs font-bold",
@@ -396,14 +480,14 @@ export function ScheduleGrid({ dates, staffMembers, onCellClick, dailyWarnings, 
                   let count = 0
                   if (key === 'A') {
                     // Total: count all non-off shifts
-                    count = staffMembers.reduce((acc, staff) => {
+                    count = orderedStaffMembers.reduce((acc, staff) => {
                       const entry = staff.schedule.find((s: any) => s.date === dateObj.dateStr)
                       const parsed = parseShift(entry?.type)
                       return acc + (parsed.type !== '/' ? 1 : 0)
                     }, 0)
                   } else {
                     // Count specific shift type
-                    count = staffMembers.reduce((acc, staff) => {
+                    count = orderedStaffMembers.reduce((acc, staff) => {
                       const entry = staff.schedule.find((s: any) => s.date === dateObj.dateStr)
                       const parsed = parseShift(entry?.type)
                       return acc + (parsed.type === key ? 1 : 0)

@@ -8,9 +8,13 @@ export async function authFetch(
   url: string,
   options: RequestInit = {}
 ): Promise<Response> {
-  const session = typeof window !== 'undefined'
-    ? sessionStorage.getItem(AUTH_SESSION_KEY)
-    : null
+  let session: string | null = null
+  if (typeof window !== 'undefined') {
+    const storage = window.sessionStorage
+    if (storage && typeof storage.getItem === 'function') {
+      session = storage.getItem(AUTH_SESSION_KEY)
+    }
+  }
 
   const headers = new Headers(options.headers)
   if (session) {

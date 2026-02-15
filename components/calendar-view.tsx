@@ -207,8 +207,8 @@ export function CalendarView() {
                           )}
                         >
                           {event.type === 'in' 
-                            ? <LogIn className="h-3 w-3 flex-shrink-0" />
-                            : <LogOut className="h-3 w-3 flex-shrink-0" />
+                            ? <span>입실:</span>
+                            : <span>퇴실:</span>
                           }
                           <span className="truncate">{event.room_number} {event.mother_name}</span>
                         </div>
