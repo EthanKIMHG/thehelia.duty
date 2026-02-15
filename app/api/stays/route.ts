@@ -46,22 +46,24 @@ function normalizeStayPayload(payload: StayPayload) {
     ? payload.baby_names.map((name) => name?.trim()).filter(Boolean)
     : undefined
 
-  const babyProfiles = Array.isArray(payload.baby_profiles)
-    ? payload.baby_profiles
-      .map((profile) => {
-        const rawWeight = profile?.weight
-        const parsedWeight =
-          rawWeight === '' || rawWeight === null || rawWeight === undefined
-            ? null
-            : Number(rawWeight)
+  const mappedBabyProfiles = Array.isArray(payload.baby_profiles)
+    ? payload.baby_profiles.map((profile) => {
+      const rawWeight = profile?.weight
+      const parsedWeight =
+        rawWeight === '' || rawWeight === null || rawWeight === undefined
+          ? null
+          : Number(rawWeight)
 
-        return {
-          name: profile?.name?.trim() || null,
-          gender: profile?.gender?.trim() || null,
-          weight: Number.isFinite(parsedWeight) ? parsedWeight : null,
-        }
-      })
-      .filter((profile) => profile.name || profile.gender || profile.weight !== null)
+      return {
+        name: profile?.name?.trim() || null,
+        gender: profile?.gender?.trim() || null,
+        weight: Number.isFinite(parsedWeight) ? parsedWeight : null,
+      }
+    })
+    : undefined
+
+  const babyProfiles = mappedBabyProfiles && mappedBabyProfiles.length > 0
+    ? mappedBabyProfiles
     : undefined
 
   const rawWeight = payload.baby_weight
@@ -79,12 +81,13 @@ function normalizeStayPayload(payload: StayPayload) {
     .filter((gender): gender is string => Boolean(gender))
 
   const mergedGender = derivedGenders && derivedGenders.length > 0
-    ? Array.from(new Set(derivedGenders)).join('/')
+    ? derivedGenders.join('/')
     : null
 
-  const normalizedWeight = Number.isFinite(parsedWeight)
-    ? parsedWeight
-    : (babyProfiles && babyProfiles.length === 1 ? babyProfiles[0].weight : null)
+  const hasBabyProfiles = Boolean(babyProfiles && babyProfiles.length > 0)
+  const normalizedWeight = hasBabyProfiles
+    ? babyProfiles?.[0]?.weight ?? null
+    : (Number.isFinite(parsedWeight) ? parsedWeight : null)
 
   return {
     ...payload,
@@ -92,7 +95,7 @@ function normalizeStayPayload(payload: StayPayload) {
     baby_profiles: babyProfiles,
     edu_date: payload.edu_date || null,
     notes: payload.notes || null,
-    gender: payload.gender || mergedGender || null,
+    gender: mergedGender || payload.gender || null,
     birth_hospital: payload.birth_hospital || null,
     baby_weight: normalizedWeight,
   }

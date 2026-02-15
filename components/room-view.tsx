@@ -27,6 +27,11 @@ interface Stay {
   mother_name: string
   baby_count: number
   baby_names?: string[]
+  baby_profiles?: Array<{
+    name?: string | null
+    gender?: string | null
+    weight?: number | null
+  }> | null
   gender?: string | null
   baby_weight?: number | null
   birth_hospital?: string | null
@@ -52,7 +57,13 @@ interface Room {
   type: 'Prestige' | 'VIP' | 'VVIP'
   status: 'Empty' | 'Occupied'
   motherName?: string
+  babyCount?: number
   babyNames?: string[]
+  babyProfiles?: Array<{
+    name?: string | null
+    gender?: string | null
+    weight?: number | null
+  }> | null
   gender?: string | null
   babyWeight?: number | null
   birthHospital?: string | null
@@ -80,6 +91,19 @@ interface SyncStatusResponse {
     mother_name: string
     check_in_date: string
   }>
+}
+
+interface DashboardStaysResponse {
+  today_kst: string | null
+  today_checkins: Stay[]
+  today_checkouts: Stay[]
+  tomorrow_checkins: Stay[]
+  tomorrow_checkouts: Stay[]
+  census: Stay[]
+  totals: {
+    newborns: number
+    mothers: number
+  }
 }
 
 type StatCardType =
@@ -111,6 +135,90 @@ const formatShortDate = (value?: string) => {
   const parsed = parseISO(value)
   if (Number.isNaN(parsed.getTime())) return value
   return format(parsed, 'M/d')
+}
+
+type BabyDisplaySource = {
+  baby_count?: number
+  baby_names?: string[]
+  baby_profiles?: Array<{
+    name?: string | null
+    gender?: string | null
+    weight?: number | null
+  }> | null
+  gender?: string | null
+  baby_weight?: number | null
+}
+
+const getDisplayBabies = (source: BabyDisplaySource) => {
+  const nameFallbacks = (source.baby_names || [])
+    .map((name) => name?.trim())
+    .filter((name): name is string => Boolean(name))
+
+  const splitGenders = (source.gender || '')
+    .split('/')
+    .map((gender) => gender.trim())
+    .filter((gender) => gender.length > 0)
+
+  const count = Math.max(1, source.baby_count || 1)
+
+  return Array.from({ length: count }, (_, idx) => {
+    const profile = source.baby_profiles?.[idx]
+    const name = profile?.name?.trim() || nameFallbacks[idx] || null
+    const gender = profile?.gender?.trim() || splitGenders[idx] || (idx === 0 ? source.gender || null : null)
+    const weight = profile?.weight ?? (idx === 0 ? source.baby_weight ?? null : null)
+    return { name, gender, weight }
+  })
+}
+
+const getBabyNameSummary = (babies: Array<{ name?: string | null }>) => {
+  return babies
+    .map((baby) => baby.name?.trim())
+    .filter((name): name is string => Boolean(name))
+    .join(', ')
+}
+
+const getBabyGenderSummary = (babies: Array<{ gender?: string | null }>, fallback?: string | null) => {
+  const fromBabies = babies
+    .map((baby) => baby.gender?.trim())
+    .filter((gender): gender is string => Boolean(gender))
+    .join('/')
+
+  if (fromBabies) return fromBabies
+  return fallback || ''
+}
+
+const getBabyWeightSummary = (babies: Array<{ weight?: number | null }>) => {
+  const values = babies
+    .map((baby, idx) => {
+      const formatted = formatWeight(baby.weight)
+      if (formatted === '-') return ''
+      return babies.length > 1 ? `아기${idx + 1} ${formatted}` : formatted
+    })
+    .filter((value) => value !== '')
+
+  return values.join(', ')
+}
+
+type ChipTone = 'neutral' | 'boy' | 'girl' | 'mixed'
+
+const getChipToneFromGender = (gender?: string | null): ChipTone => {
+  const raw = (gender || '').trim()
+  if (!raw) return 'neutral'
+
+  const hasBoy = raw.includes('남아')
+  const hasGirl = raw.includes('여아')
+
+  if (hasBoy && hasGirl) return 'mixed'
+  if (hasBoy) return 'boy'
+  if (hasGirl) return 'girl'
+  return 'neutral'
+}
+
+const getChipToneClass = (tone: ChipTone) => {
+  if (tone === 'boy') return 'border-sky-100 bg-sky-50/45 text-sky-700'
+  if (tone === 'girl') return 'border-pink-100 bg-pink-50/45 text-pink-700'
+  if (tone === 'mixed') return 'border-violet-100 bg-violet-50/45 text-violet-700'
+  return 'border-border/70 bg-muted/30 text-foreground'
 }
 
 const getDateStringInTimeZone = (timeZone: string, baseDate = new Date()) => {
@@ -161,6 +269,15 @@ export function RoomView() {
     }
   })
 
+  const { data: dashboardStays } = useQuery<DashboardStaysResponse>({
+    queryKey: ['dashboard-stays'],
+    queryFn: async () => {
+      const res = await authFetch('/api/dashboard-stays')
+      if (!res.ok) throw new Error('Failed to fetch dashboard stays')
+      return res.json()
+    }
+  })
+
   const selectedRoomData = roomsFromAPI?.find((room) => room.room_number === selectedRoom)
 
   const todayStr = useMemo(() => getDateStringInTimeZone('Asia/Seoul'), [])
@@ -188,7 +305,9 @@ export function RoomView() {
       type: room.room_type,
       status,
       motherName: stay?.mother_name,
+      babyCount: stay?.baby_count,
       babyNames: stay?.baby_names,
+      babyProfiles: stay?.baby_profiles || null,
       gender: stay?.gender,
       babyWeight: stay?.baby_weight,
       birthHospital: stay?.birth_hospital,
@@ -215,19 +334,29 @@ export function RoomView() {
   const upcomingStays = (roomsFromAPI || []).flatMap((room) => room.upcoming_stays || [])
 
   const checkInCandidates = dedupeByStayId([...activeStays, ...upcomingStays])
-  const censusStays = activeStays.filter(
+  const fallbackCensusStays = activeStays.filter(
     (stay) => stay.check_in_date <= todayStr && stay.check_out_date > todayStr
   )
 
-  const todayCheckInList = checkInCandidates.filter((stay) => stay.check_in_date === todayStr)
-  const todayCheckOutList = activeStays.filter((stay) => stay.check_out_date === todayStr)
-  const tomorrowCheckInList = checkInCandidates.filter((stay) => stay.check_in_date === tomorrowStr)
-  const tomorrowCheckOutList = activeStays.filter((stay) => stay.check_out_date === tomorrowStr)
+  const fallbackTodayCheckInList = checkInCandidates.filter((stay) => stay.check_in_date === todayStr)
+  const fallbackTodayCheckOutList = activeStays.filter((stay) => stay.check_out_date === todayStr)
+  const fallbackTomorrowCheckInList = checkInCandidates.filter((stay) => stay.check_in_date === tomorrowStr)
+  const fallbackTomorrowCheckOutList = activeStays.filter((stay) => stay.check_out_date === tomorrowStr)
+
+  const censusStays = dashboardStays?.census ?? fallbackCensusStays
+  const todayCheckInList = dashboardStays?.today_checkins ?? fallbackTodayCheckInList
+  const todayCheckOutList = dashboardStays?.today_checkouts ?? fallbackTodayCheckOutList
+  const tomorrowCheckInList = dashboardStays?.tomorrow_checkins ?? fallbackTomorrowCheckInList
+  const tomorrowCheckOutList = dashboardStays?.tomorrow_checkouts ?? fallbackTomorrowCheckOutList
 
   const totalNewborns =
+    dashboardStays?.totals?.newborns ??
     dailyStats?.total_newborns ??
     censusStays.reduce((acc, stay) => acc + (stay.baby_count || 0), 0)
-  const totalMothers = dailyStats?.total_mothers ?? censusStays.length
+  const totalMothers =
+    dashboardStays?.totals?.mothers ??
+    dailyStats?.total_mothers ??
+    censusStays.length
   const todayCheckIn = todayCheckInList.length
   const todayCheckOut = todayCheckOutList.length
   const tomorrowCheckIn = tomorrowCheckInList.length
@@ -260,7 +389,8 @@ export function RoomView() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['rooms'] }),
         queryClient.invalidateQueries({ queryKey: ['stays'] }),
-        queryClient.invalidateQueries({ queryKey: ['daily-stats'] })
+        queryClient.invalidateQueries({ queryKey: ['daily-stats'] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard-stays'] })
       ])
       setSyncResult(result)
 
@@ -355,12 +485,12 @@ export function RoomView() {
       onValueChange={(value) => setTab(value as 'overview' | 'history')}
       className={cn(
         'space-y-4',
-        tab === 'overview' && showTodayNotice && 'pt-32 md:pt-36',
-        tab === 'overview' && !showTodayNotice && 'pt-16'
+        /* tab === 'overview' && showTodayNotice && 'pt-32 md:pt-36',
+        tab === 'overview' && !showTodayNotice && 'pt-16' */
       )}
     >
       {tab === 'overview' && (
-        <div className="fixed left-1/2 top-4 z-50 w-[min(94vw,640px)] -translate-x-1/2">
+        <div className="fixed left-1/2 top-4 z-50 w-[min(94vw,540px)] -translate-x-1/2">
           {showTodayNotice ? (
             <Card className="border-primary/20 bg-background/95 shadow-xl backdrop-blur supports-[backdrop-filter]:bg-background/80">
               <CardContent className="p-3 md:p-4">
@@ -627,28 +757,35 @@ export function RoomView() {
                 </div>
               ) : (
                 <div className="max-h-[58vh] overflow-y-auto pr-1 space-y-2">
-                  {statDialogData.stays.map((stay) => (
-                    <div
-                      key={stay.id}
-                      className="rounded-xl border bg-muted/20 px-3 py-3 flex items-center justify-between gap-3"
-                    >
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <Badge variant="secondary">{stay.room_number}호</Badge>
-                          <span className="font-semibold truncate">{stay.mother_name}</span>
+                  {statDialogData.stays.map((stay) => {
+                    const displayBabies = getDisplayBabies(stay)
+                    const nameSummary = getBabyNameSummary(displayBabies)
+                    const weightSummary = getBabyWeightSummary(displayBabies)
+
+                    return (
+                      <div
+                        key={stay.id}
+                        className="rounded-xl border bg-muted/20 px-3 py-3 flex items-center justify-between gap-3"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="secondary">{stay.room_number}호</Badge>
+                            <span className="font-semibold truncate">{stay.mother_name}</span>
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <span>태명: {nameSummary || '-'}</span>
+                            <span>몸무게: {weightSummary || '-'}</span>
+                            <span>입실: {formatShortDate(stay.check_in_date)}</span>
+                            <span>퇴실: {formatShortDate(stay.check_out_date)}</span>
+                          </div>
                         </div>
-                        <div className="mt-1 text-xs text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1">
-                          <span>태명: {stay.baby_names?.filter((name) => name.trim() !== '').join(', ') || '-'}</span>
-                          <span>입실: {formatShortDate(stay.check_in_date)}</span>
-                          <span>퇴실: {formatShortDate(stay.check_out_date)}</span>
+                        <div className="text-right">
+                          <p className="text-[11px] text-muted-foreground">신생아</p>
+                          <p className="text-xl font-extrabold leading-none">{stay.baby_count}</p>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <p className="text-[11px] text-muted-foreground">신생아</p>
-                        <p className="text-xl font-extrabold leading-none">{stay.baby_count}</p>
-                      </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </div>
@@ -803,11 +940,22 @@ function DateTile({
   )
 }
 
-function InfoChip({ label, value }: { label: string; value?: string | null }) {
+function InfoChip({
+  label,
+  value,
+  tone = 'neutral'
+}: {
+  label: string
+  value?: string | null
+  tone?: ChipTone
+}) {
   return (
-    <div className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-xs">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium truncate max-w-[130px]">{value && value.trim() !== '' ? value : '-'}</span>
+    <div className={cn(
+      'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs',
+      getChipToneClass(tone)
+    )}>
+      <span className="opacity-70">{label}</span>
+      <span className="font-medium truncate max-w-[220px]">{value && value.trim() !== '' ? value : '-'}</span>
     </div>
   )
 }
@@ -816,7 +964,17 @@ function RoomCard({ room, onClick }: { room: Room; onClick?: () => void }) {
   const hasUpcoming = room.upcomingStays.length > 0
   const isEmpty = room.status === 'Empty'
   const nextUpcoming = room.upcomingStays[0]
-  const babyNameValue = room.babyNames?.filter((name) => name.trim() !== '').join(', ')
+  const displayBabies = getDisplayBabies({
+    baby_count: room.babyCount,
+    baby_names: room.babyNames,
+    baby_profiles: room.babyProfiles,
+    gender: room.gender,
+    baby_weight: room.babyWeight
+  })
+  const babyNameValue = getBabyNameSummary(displayBabies)
+  const babyGenderValue = getBabyGenderSummary(displayBabies, room.gender)
+  const babyWeightValue = getBabyWeightSummary(displayBabies)
+  const babyTone = getChipToneFromGender(babyGenderValue)
 
   const checkoutBadge =
     room.checkOutDday === 0 ? 'D-Day' :
@@ -883,10 +1041,10 @@ function RoomCard({ room, onClick }: { room: Room; onClick?: () => void }) {
             </div>
 
             <div className="flex flex-wrap gap-1.5">
-              <InfoChip label="태명" value={babyNameValue} />
-              <InfoChip label="성별" value={room.gender} />
-              <InfoChip label="몸무게" value={formatWeight(room.babyWeight)} />
-              <InfoChip label="출산병원" value={room.birthHospital} />
+              <InfoChip label="태명" value={babyNameValue} tone={babyTone} />
+              <InfoChip label="성별" value={babyGenderValue} tone={babyTone} />
+              <InfoChip label="몸무게" value={babyWeightValue} tone={babyTone} />
+              <InfoChip label="출산병원" value={room.birthHospital} tone="neutral" />
             </div>
 
             <div className="grid grid-cols-3 gap-2">

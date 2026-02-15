@@ -40,17 +40,19 @@ AS $$
 $$;
 
 -- Room snapshot for room dashboard/list rendering
-CREATE OR REPLACE VIEW public.v_room_snapshot AS
+-- Recreate to ensure latest stays columns are reflected in JSON payload.
+DROP VIEW IF EXISTS public.v_room_snapshot;
+CREATE VIEW public.v_room_snapshot AS
 SELECT
   r.room_number,
   r.room_type,
   r.floor,
-  to_jsonb(a) AS active_stay,
+  a.active_stay,
   COALESCE(u.upcoming_stays, '[]'::jsonb) AS upcoming_stays,
-  to_jsonb(a) AS current_stay
+  a.active_stay AS current_stay
 FROM rooms r
 LEFT JOIN LATERAL (
-  SELECT s.*
+  SELECT to_jsonb(s) AS active_stay
   FROM stays s
   WHERE s.room_number = r.room_number
     AND s.status = 'active'
@@ -58,7 +60,7 @@ LEFT JOIN LATERAL (
   LIMIT 1
 ) a ON TRUE
 LEFT JOIN LATERAL (
-  SELECT jsonb_agg(to_jsonb(s) ORDER BY s.check_in_date ASC) AS upcoming_stays
+  SELECT COALESCE(jsonb_agg(to_jsonb(s) ORDER BY s.check_in_date ASC), '[]'::jsonb) AS upcoming_stays
   FROM stays s
   WHERE s.room_number = r.room_number
     AND s.status = 'upcoming'
@@ -104,6 +106,38 @@ LEFT JOIN stays s ON TRUE
 GROUP BY k.base_date;
 
 GRANT SELECT ON public.v_dashboard_stats_kst TO anon, authenticated, service_role;
+
+-- KST dashboard list source (for check-in/out/newborn/mother dialogs)
+CREATE OR REPLACE VIEW public.v_dashboard_stays_kst AS
+WITH k AS (
+  SELECT public.kst_today() AS base_date
+)
+SELECT
+  s.id,
+  s.room_number,
+  s.mother_name,
+  s.baby_count,
+  s.baby_names,
+  s.baby_profiles,
+  s.gender,
+  s.baby_weight,
+  s.birth_hospital,
+  s.check_in_date,
+  s.check_out_date,
+  s.edu_date,
+  s.notes,
+  s.status,
+  k.base_date,
+  (s.check_in_date = k.base_date AND s.status IN ('active', 'upcoming')) AS is_today_checkin,
+  (s.check_out_date = k.base_date AND s.status = 'active') AS is_today_checkout,
+  (s.check_in_date = (k.base_date + 1) AND s.status IN ('active', 'upcoming')) AS is_tomorrow_checkin,
+  (s.check_out_date = (k.base_date + 1) AND s.status = 'active') AS is_tomorrow_checkout,
+  (s.status = 'active' AND s.check_in_date <= k.base_date AND s.check_out_date > k.base_date) AS is_census
+FROM stays s
+CROSS JOIN k
+WHERE s.status IN ('active', 'upcoming');
+
+GRANT SELECT ON public.v_dashboard_stays_kst TO anon, authenticated, service_role;
 
 -- Completed history projection
 CREATE OR REPLACE VIEW public.v_stay_history AS

@@ -10,13 +10,25 @@ import { clearSession } from '@/lib/auth'
 import { LogOut, UserPlus } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import { RoomView } from '@/components/room-view'
 
 export default function Home() {
   const [currentView, setCurrentView] = useState<'excel' | 'calendar' | 'room'>('excel')
   const router = useRouter()
+
+  const todayKstText = useMemo(() => {
+    const parts = new Intl.DateTimeFormat('ko-KR', {
+      timeZone: 'Asia/Seoul',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      weekday: 'long'
+    }).format(new Date())
+
+    return parts
+  }, [])
 
   const handleLogout = () => {
     clearSession()
@@ -52,6 +64,11 @@ export default function Home() {
           </div>
         </div>
 
+        <div className="rounded-2xl border bg-gradient-to-r from-primary/15 via-primary/5 to-background px-4 py-4 md:px-6 md:py-5">
+          <p className="text-[11px] md:text-xs tracking-[0.16em] text-muted-foreground">TODAY · KST</p>
+          <p className="mt-1 text-3xl md:text-5xl font-black tracking-tight leading-none">{todayKstText}</p>
+        </div>
+
         <div className="w-full">
           {currentView === 'excel' && <ExcelView />}
           {currentView === 'calendar' && <CalendarView />}
@@ -62,4 +79,3 @@ export default function Home() {
     </AuthGuard>
   )
 }
-

@@ -2,8 +2,9 @@
 
 import { Button } from '@/components/ui/button'
 import { authFetch } from '@/lib/api'
+import { generateAutoSchedule } from '@/lib/auto-scheduler'
 import { calculateMonthlyStats, parseShift } from '@/lib/shift-utils'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { endOfWeek, format, isWithinInterval, startOfWeek } from 'date-fns'
 import { UserPlus, Wand2 } from 'lucide-react'
 import Link from 'next/link'
@@ -13,7 +14,9 @@ import { ScheduleGrid } from './excel-view/schedule-grid'
 import { StaffingMeter } from './excel-view/staffing-meter'
 
 export function ExcelView() {
+  const queryClient = useQueryClient()
   const [currentDate, setCurrentDate] = useState(new Date())
+  const [isAutoAssigning, setIsAutoAssigning] = useState(false)
 
   // Fetch Staff
   const { data: staffData } = useQuery<any[]>({
@@ -221,9 +224,63 @@ export function ExcelView() {
     refetchSchedules()
   }
 
-  const handleAutoAssign = () => {
-     // TODO: Implement Auto Assign API call
-     alert("AI Auto Assign feature coming soon via API!")
+  const handleAutoAssign = async () => {
+    if (!staffData?.length) {
+      alert('직원 데이터가 없어 자동배치를 진행할 수 없습니다.')
+      return
+    }
+
+    if (!staysData) {
+      alert('신생아/입퇴실 데이터를 불러온 뒤 다시 시도해주세요.')
+      return
+    }
+
+    const shouldProceed = window.confirm(
+      '해당 월의 근무표를 자동배치로 다시 작성합니다.\n기존 입력값이 덮어써질 수 있습니다. 계속할까요?'
+    )
+    if (!shouldProceed) return
+
+    setIsAutoAssigning(true)
+    try {
+      const result = generateAutoSchedule({
+        staffData: staffData.map((staff: any) => ({
+          id: staff.id,
+          name: staff.name,
+          employment_type: staff.employment_type === 'part-time' ? 'part-time' : 'full-time'
+        })),
+        scheduleData: scheduleData || [],
+        staysData: staysData || [],
+        wantedOffStats,
+        dates: dates.filter((d) => d.isValid).map((d) => d.dateStr)
+      })
+
+      const res = await authFetch('/api/schedules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(result.entries)
+      })
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body?.error || '자동배치 저장에 실패했습니다.')
+      }
+
+      await Promise.all([
+        refetchSchedules(),
+        queryClient.invalidateQueries({ queryKey: ['schedules', monthStr] })
+      ])
+
+      const unmetCount = result.unmetCoverage.length
+      const coverageMessage = unmetCount > 0
+        ? `\n주의: 인력 미충족 일자 ${unmetCount}일`
+        : '\n모든 일자 D/E/N 요구 인원을 충족했습니다.'
+
+      alert(`자동배치가 완료되었습니다.${coverageMessage}`)
+    } catch (error) {
+      alert(error instanceof Error ? error.message : '자동배치 중 오류가 발생했습니다.')
+    } finally {
+      setIsAutoAssigning(false)
+    }
   }
 
   return (
@@ -241,9 +298,9 @@ export function ExcelView() {
             {format(currentDate, 'yyyy년 M월')}
          </div>
         <div className="flex gap-2">
-            <Button onClick={handleAutoAssign} variant="outline" className="gap-2">
+            <Button onClick={handleAutoAssign} variant="outline" className="gap-2" disabled={isAutoAssigning}>
                 <Wand2 className="h-4 w-4" />
-                AI 자동 배치
+                {isAutoAssigning ? '자동 배치 중...' : 'AI 자동 배치'}
             </Button>
         </div>
       </div>
