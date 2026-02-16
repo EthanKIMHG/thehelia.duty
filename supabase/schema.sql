@@ -165,3 +165,32 @@ CREATE INDEX IF NOT EXISTS idx_schedules_work_date
 
 CREATE INDEX IF NOT EXISTS idx_wanted_offs_wanted_date
   ON wanted_offs (wanted_date);
+
+-- -----------------------------------------------------------------------------
+-- Staff order persistence for drag-and-drop (Excel view / staff list)
+-- -----------------------------------------------------------------------------
+
+ALTER TABLE staff
+ADD COLUMN IF NOT EXISTS display_order INTEGER;
+
+WITH ranked_staff AS (
+  SELECT
+    id,
+    ROW_NUMBER() OVER (
+      ORDER BY
+        CASE WHEN display_order IS NULL THEN 1 ELSE 0 END,
+        display_order,
+        created_at,
+        name,
+        id
+    ) AS next_order
+  FROM staff
+)
+UPDATE staff s
+SET display_order = r.next_order
+FROM ranked_staff r
+WHERE s.id = r.id
+  AND (s.display_order IS NULL OR s.display_order <> r.next_order);
+
+CREATE INDEX IF NOT EXISTS idx_staff_display_order
+  ON staff (display_order);

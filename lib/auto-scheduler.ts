@@ -34,6 +34,7 @@ type StaffState = {
   nightSpecialist: boolean
   offTarget: number | null
   wantedOff: Set<string>
+  lockedDates: Set<string>
   assignments: Map<string, DutyType>
   workDays: number
   offDays: number
@@ -75,6 +76,9 @@ export function generateAutoSchedule(params: {
 }): AutoSchedulerResult {
   const { staffData, scheduleData, staysData, wantedOffStats, dates } = params
 
+  const datesSet = new Set(dates)
+  const configuredDates = getConfiguredDates(scheduleData, datesSet)
+  const existingAssignments = getExistingAssignments(scheduleData, datesSet)
   const requiredPerDate = getRequiredPerDate(dates, staysData)
   const existingNightCounts = getExistingNightCounts(scheduleData)
   const nightSpecialistIds = pickNightSpecialists(staffData, dates.length, requiredPerDate, existingNightCounts)
@@ -96,6 +100,7 @@ export function generateAutoSchedule(params: {
       nightSpecialist: isNight,
       offTarget: baseOffTarget === null ? null : Math.max(baseOffTarget, wantedOff.size),
       wantedOff,
+      lockedDates: new Set<string>(),
       assignments: new Map<string, DutyType>(),
       workDays: 0,
       offDays: 0,
@@ -103,11 +108,36 @@ export function generateAutoSchedule(params: {
     }
   })
 
+  // Existing configured dates are immutable during auto-assignment.
+  // If a date has at least one saved schedule row, that date is treated as fixed.
+  for (const state of staffStates) {
+    const existingByDate = existingAssignments.get(state.id)
+
+    for (const date of dates) {
+      if (!configuredDates.has(date)) continue
+
+      const duty = existingByDate?.get(date) || '/'
+
+      state.assignments.set(date, duty)
+      state.lockedDates.add(date)
+
+      if (duty === '/') {
+        state.offDays += 1
+        continue
+      }
+
+      state.workDays += 1
+      state.shiftCount[duty] += 1
+    }
+  }
+
   // Wanted off is fixed OFF for full-time staff.
   for (const state of staffStates) {
     if (state.employmentType !== 'full-time') continue
     for (const date of dates) {
       if (!state.wantedOff.has(date)) continue
+      if (state.lockedDates.has(date)) continue
+      if (state.assignments.has(date)) continue
       state.assignments.set(date, '/')
       state.offDays += 1
     }
@@ -194,6 +224,7 @@ export function generateAutoSchedule(params: {
   const entries: AutoScheduleEntry[] = []
   for (const state of staffStates) {
     for (const date of dates) {
+      if (state.lockedDates.has(date)) continue
       entries.push({
         staff_id: state.id,
         work_date: date,
@@ -215,6 +246,42 @@ export function generateAutoSchedule(params: {
       offTarget: state.offTarget
     }))
   }
+}
+
+function normalizeDutyType(rawDutyType: string | null | undefined): DutyType {
+  const parsed = parseShift(rawDutyType || '').type
+  if (parsed === 'D' || parsed === 'E' || parsed === 'N' || parsed === 'M' || parsed === 'DE' || parsed === '/') {
+    return parsed
+  }
+  return '/'
+}
+
+function getConfiguredDates(scheduleData: ScheduleInput[], datesSet: Set<string>) {
+  const configuredDates = new Set<string>()
+
+  for (const row of scheduleData || []) {
+    if (!datesSet.has(row.work_date)) continue
+    configuredDates.add(row.work_date)
+  }
+
+  return configuredDates
+}
+
+function getExistingAssignments(scheduleData: ScheduleInput[], datesSet: Set<string>) {
+  const map = new Map<string, Map<string, DutyType>>()
+
+  for (const row of scheduleData || []) {
+    if (!datesSet.has(row.work_date)) continue
+
+    const dutyType = normalizeDutyType(row.duty_type)
+    if (!map.has(row.staff_id)) {
+      map.set(row.staff_id, new Map<string, DutyType>())
+    }
+
+    map.get(row.staff_id)?.set(row.work_date, dutyType)
+  }
+
+  return map
 }
 
 function getRequiredPerDate(dates: string[], staysData: StayInput[]) {
@@ -241,7 +308,7 @@ function getExistingNightCounts(scheduleData: ScheduleInput[]) {
   const map = new Map<string, number>()
 
   for (const row of scheduleData || []) {
-    if (parseShift(row.duty_type).type !== 'N') continue
+    if (normalizeDutyType(row.duty_type) !== 'N') continue
     map.set(row.staff_id, (map.get(row.staff_id) || 0) + 1)
   }
 
@@ -353,6 +420,10 @@ function canAssignShift(
   dayIndex: number,
   dates: string[]
 ) {
+  if (state.lockedDates.has(date)) {
+    return false
+  }
+
   const existing = state.assignments.get(date)
   if (existing) {
     // Wanted off is immutable.

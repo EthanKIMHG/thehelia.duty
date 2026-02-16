@@ -115,25 +115,20 @@ const toValidDate = (value?: string) => {
   return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
-const getNearestSunday = (date: Date) => {
+const getPreviousSunday = (date: Date) => {
   const day = date.getDay()
-
+  // 교육일은 퇴실일의 "직전(전주) 일요일" 기준.
+  // 퇴실일이 일요일이면 같은 날이 아닌 7일 전 일요일을 사용한다.
+  const offset = day === 0 ? 7 : day
   const previousSunday = new Date(date)
-  previousSunday.setDate(date.getDate() - day)
-
-  const nextSunday = new Date(date)
-  nextSunday.setDate(date.getDate() + (day === 0 ? 0 : 7 - day))
-
-  const prevDiff = Math.abs(differenceInCalendarDays(date, previousSunday))
-  const nextDiff = Math.abs(differenceInCalendarDays(nextSunday, date))
-
-  return nextDiff < prevDiff ? nextSunday : previousSunday
+  previousSunday.setDate(date.getDate() - offset)
+  return previousSunday
 }
 
 const getEducationDateFromCheckOut = (checkOutDate: string) => {
   const parsed = toValidDate(checkOutDate)
   if (!parsed) return ''
-  return format(getNearestSunday(parsed), 'yyyy-MM-dd')
+  return format(getPreviousSunday(parsed), 'yyyy-MM-dd')
 }
 
 const getScheduleByPeriod = (checkInDate: string, period: StayPeriod) => {
@@ -281,6 +276,9 @@ export function StayFormDrawer({
   upcomingStays = []
 }: StayFormDrawerProps) {
   const queryClient = useQueryClient()
+  const hasActiveStay = Boolean(activeStay)
+  const hasUpcomingStays = upcomingStays.length > 0
+  const hasStayData = hasActiveStay || hasUpcomingStays
 
   const today = useMemo(() => format(new Date(), 'yyyy-MM-dd'), [])
 
@@ -309,7 +307,7 @@ export function StayFormDrawer({
 
   useEffect(() => {
     if (open) {
-      if (activeStay) {
+      if (hasStayData) {
         setMode('view')
       } else {
         setMode('create')
@@ -317,7 +315,7 @@ export function StayFormDrawer({
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
+  }, [open, hasStayData])
 
   const createMutation = useMutation({
     mutationFn: async (data: StayPayload & { room_number: string }) => {
@@ -453,7 +451,7 @@ export function StayFormDrawer({
   }
 
   const handleCancelEdit = () => {
-    if (activeStay) {
+    if (hasStayData) {
       setMode('view')
     } else {
       setMode('create')
@@ -502,7 +500,7 @@ export function StayFormDrawer({
 
   const handleCheckOutChange = (newCheckOut: string) => {
     if (!newCheckOut) {
-      setFormData((prev) => ({ ...prev, check_out_date: '' }))
+      setFormData((prev) => ({ ...prev, check_out_date: '', edu_date: '' }))
       return
     }
 
@@ -659,14 +657,16 @@ export function StayFormDrawer({
               {roomNumber}호
             </span>
             <span className="text-xl font-semibold tracking-tight">
-              {mode === 'view' && activeStay && '객실 정보'}
+              {mode === 'view' && '객실 정보'}
               {mode === 'create' && '입실 등록'}
               {mode === 'edit' && '정보 수정'}
               {mode === 'add-upcoming' && '입실 예정 추가'}
             </span>
           </SheetTitle>
           <SheetDescription className="text-sm leading-6">
-            {mode === 'view' && '현재 입실 정보 및 예정된 입실 내역입니다.'}
+            {mode === 'view' && (hasActiveStay
+              ? '현재 입실 정보 및 예정된 입실 내역입니다.'
+              : '현재는 비어있는 객실이며, 예정된 입실 내역입니다.')}
             {mode === 'create' && '필수 항목부터 빠르게 입력하고, 아기 정보를 상세하게 등록하세요.'}
             {mode === 'edit' && '입실 정보를 수정합니다.'}
             {mode === 'add-upcoming' && '다음 입실 예정 정보를 등록합니다.'}
@@ -674,13 +674,15 @@ export function StayFormDrawer({
         </SheetHeader>
 
         <div className="py-6 space-y-6">
-          {mode === 'view' && activeStay && (
+          {mode === 'view' && hasStayData && (
             <>
-              <StayInfoCard stay={activeStay} isActive />
+              {activeStay && <StayInfoCard stay={activeStay} isActive />}
 
               {upcomingStays.length > 0 && (
                 <div className="space-y-3">
-                  <div className="text-sm font-medium text-muted-foreground">입실 예정</div>
+                  <div className="text-sm font-medium text-muted-foreground">
+                    {activeStay ? '입실 예정' : '다음 입실 예정'}
+                  </div>
                   {upcomingStays.map((stay) => (
                     <StayInfoCard key={stay.id} stay={stay} />
                   ))}
@@ -892,7 +894,7 @@ export function StayFormDrawer({
                       onChange={(e) => setFormData((prev) => ({ ...prev, edu_date: e.target.value }))}
                     />
                     <p className="text-[11px] text-muted-foreground">
-                      퇴실일 기준 가장 가까운 일요일로 자동 반영됩니다.
+                      퇴실일 기준 직전(전주) 일요일로 자동 반영됩니다.
                     </p>
                   </div>
                 </CardContent>

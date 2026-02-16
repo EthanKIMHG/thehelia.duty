@@ -45,9 +45,17 @@ interface ScheduleGridProps {
   onCellClick: (staffId: string, dateStr: string, newType: string) => void
   dailyWarnings?: Map<string, DailyWarning>
   wantedOffStats?: Map<string, Set<string>>
+  onReorderStaffMembers?: (orderedIds: string[]) => Promise<void> | void
 }
 
-export function ScheduleGrid({ dates, staffMembers, onCellClick, dailyWarnings, wantedOffStats }: ScheduleGridProps) {
+export function ScheduleGrid({
+  dates,
+  staffMembers,
+  onCellClick,
+  dailyWarnings,
+  wantedOffStats,
+  onReorderStaffMembers
+}: ScheduleGridProps) {
   const [hoveredRow, setHoveredRow] = useState<string | null>(null)
   const [selectedStaffForOff, setSelectedStaffForOff] = useState<any>(null)
   const [isOffDialogOpen, setIsOffDialogOpen] = useState(false)
@@ -58,19 +66,7 @@ export function ScheduleGrid({ dates, staffMembers, onCellClick, dailyWarnings, 
   const todayStr = format(new Date(), 'yyyy-MM-dd')
 
   useEffect(() => {
-    setOrderedStaffMembers((prev) => {
-      if (!prev.length) return staffMembers
-
-      const nextById = new Map(staffMembers.map((staff) => [staff.id, staff]))
-      const kept = prev
-        .map((staff) => nextById.get(staff.id))
-        .filter((staff): staff is any => Boolean(staff))
-
-      const existingIds = new Set(kept.map((staff) => staff.id))
-      const appended = staffMembers.filter((staff) => !existingIds.has(staff.id))
-
-      return [...kept, ...appended]
-    })
+    setOrderedStaffMembers(staffMembers)
   }, [staffMembers])
 
   const handleStaffClick = (staff: any) => {
@@ -78,28 +74,41 @@ export function ScheduleGrid({ dates, staffMembers, onCellClick, dailyWarnings, 
     setIsOffDialogOpen(true)
   }
 
-  const reorderStaffMembers = (sourceId: string, targetId: string) => {
+  const getReorderedStaffMembers = (sourceId: string, targetId: string) => {
     if (!sourceId || !targetId || sourceId === targetId) return
 
-    setOrderedStaffMembers((prev) => {
-      const sourceIndex = prev.findIndex((staff) => staff.id === sourceId)
-      const targetIndex = prev.findIndex((staff) => staff.id === targetId)
-      if (sourceIndex < 0 || targetIndex < 0) return prev
+    const sourceIndex = orderedStaffMembers.findIndex((staff) => staff.id === sourceId)
+    const targetIndex = orderedStaffMembers.findIndex((staff) => staff.id === targetId)
+    if (sourceIndex < 0 || targetIndex < 0) return
 
-      const next = [...prev]
-      const [moved] = next.splice(sourceIndex, 1)
-      next.splice(targetIndex, 0, moved)
-      return next
-    })
+    const next = [...orderedStaffMembers]
+    const [moved] = next.splice(sourceIndex, 1)
+    next.splice(targetIndex, 0, moved)
+    return next
+  }
+
+  const persistReorder = async (sourceId: string, targetId: string) => {
+    const next = getReorderedStaffMembers(sourceId, targetId)
+    if (!next) return
+
+    setOrderedStaffMembers(next)
+    try {
+      await onReorderStaffMembers?.(next.map((staff) => staff.id))
+    } catch (error) {
+      console.error('Failed to persist staff order:', error)
+      alert('직원 순서 저장에 실패했습니다. 다시 시도해주세요.')
+      setOrderedStaffMembers(staffMembers)
+    }
   }
 
   return (
     <div className="border rounded-md bg-card text-card-foreground shadow-sm overflow-x-auto relative">
       <Table>
         <TableHeader>
+          
           <TableRow>
             <TableHead className="min-w-[220px] w-[220px] sticky left-0 bg-background z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-              이름 (직종)
+              이름 (직종) / 날짜
             </TableHead>
             {dates.map((dateObj, i) => {
               if (!dateObj.isValid) {
@@ -126,6 +135,8 @@ export function ScheduleGrid({ dates, staffMembers, onCellClick, dailyWarnings, 
             <TableHead className="text-center min-w-[50px] text-xs font-bold border-l">휴무</TableHead>
             <TableHead className="text-center min-w-[50px] text-xs font-bold border-l">OT</TableHead>
           </TableRow>
+          
+
         </TableHeader>
         <TableBody>
           {/* Newborn Status Row */}
@@ -210,7 +221,6 @@ export function ScheduleGrid({ dates, staffMembers, onCellClick, dailyWarnings, 
               <TableCell className="border-l bg-muted/5" />
             </TableRow>
           )}
-
           {orderedStaffMembers.map((staff) => (
             <TableRow 
               key={staff.id} 
@@ -238,7 +248,7 @@ export function ScheduleGrid({ dates, staffMembers, onCellClick, dailyWarnings, 
               onDrop={(e) => {
                 e.preventDefault()
                 if (!draggingStaffId || draggingStaffId === staff.id) return
-                reorderStaffMembers(draggingStaffId, staff.id)
+                void persistReorder(draggingStaffId, staff.id)
                 setDragOverStaffId(null)
               }}
               onDragEnd={() => {

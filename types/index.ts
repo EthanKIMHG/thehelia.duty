@@ -6,6 +6,7 @@ export interface Staff {
   name: string;
   job_title: StaffRole;
   employment_type: EmploymentType;
+  display_order?: number | null;
   max_capacity: number;
   created_at?: string;
 }

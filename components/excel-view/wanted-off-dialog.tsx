@@ -1,10 +1,11 @@
 'use client'
 
 import { isHoliday } from '@/lib/holidays'
+import { parseShift } from '@/lib/shift-utils'
 import { cn } from '@/lib/utils'
-import { addDays, eachDayOfInterval, eachWeekOfInterval, endOfMonth, format, getWeek, isSameMonth, isToday, startOfMonth } from 'date-fns'
+import { addDays, addMonths, eachDayOfInterval, eachWeekOfInterval, endOfMonth, format, isSameMonth, isToday, startOfMonth, subMonths } from 'date-fns'
 import { ko } from 'date-fns/locale'
-import { CalendarIcon, Check, Copy, Loader2 } from 'lucide-react'
+import { CalendarIcon, Check, ChevronLeft, ChevronRight, Copy, Loader2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -28,13 +29,24 @@ interface WantedOffSheetProps {
 }
 
 export function WantedOffSheet({ staff, open, onOpenChange, currentMonth }: WantedOffSheetProps) {
+  const [selectedMonth, setSelectedMonth] = useState<Date>(() => startOfMonth(currentMonth))
   const [selectedDates, setSelectedDates] = useState<Date[]>([])
   const [initialDates, setInitialDates] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const queryClient = useQueryClient()
   const { toast } = useToast()
 
-  const monthStr = format(currentMonth, 'yyyy-MM')
+  const monthStr = format(selectedMonth, 'yyyy-MM')
+
+  useEffect(() => {
+    if (!open) return
+    setSelectedMonth(startOfMonth(currentMonth))
+  }, [currentMonth, open])
+
+  useEffect(() => {
+    setSelectedDates([])
+    setInitialDates([])
+  }, [monthStr])
 
   // Fetch existing wanted offs
   const { data: wantedOffs, isLoading } = useQuery<any[]>({
@@ -133,14 +145,14 @@ export function WantedOffSheet({ staff, open, onOpenChange, currentMonth }: Want
 
   // --- Custom Grid Generation ---
   const weeks = useMemo(() => {
-    const start = startOfMonth(currentMonth)
-    const end = endOfMonth(currentMonth)
+    const start = startOfMonth(selectedMonth)
+    const end = endOfMonth(selectedMonth)
     return eachWeekOfInterval({ start, end }, { weekStartsOn: 0 }) // Sunday start for typical calendar
-  }, [currentMonth])
+  }, [selectedMonth])
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full sm:max-w-lg flex flex-col h-full p-0 gap-0">
+      <SheetContent side="right" className="w-full sm:max-w-lg flex flex-col h-full p-0 gap-0 overflow-hidden">
         <SheetHeader className="p-6 pb-2 border-b">
           <SheetTitle className="flex items-center gap-2">
             <CalendarIcon className="w-5 h-5" />
@@ -165,16 +177,50 @@ export function WantedOffSheet({ staff, open, onOpenChange, currentMonth }: Want
           </div>
         </SheetHeader>
 
-        <Tabs defaultValue="wanted" className="flex-1 flex flex-col overflow-hidden">
-            <div className="px-6 pt-2">
+        <Tabs defaultValue="wanted" className="flex-1 flex flex-col overflow-hidden min-h-0">
+            <div className="px-6 pt-2 space-y-3 shrink-0">
                  <TabsList className="grid w-full grid-cols-2">
                     <TabsTrigger value="wanted">희망 휴무 신청</TabsTrigger>
                     <TabsTrigger value="share">일정 공유</TabsTrigger>
                 </TabsList>
+
+                <div className="flex items-center gap-1 rounded-lg border bg-muted/30 p-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 shrink-0"
+                    onClick={() => setSelectedMonth((prev) => subMonths(prev, 1))}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <div className="min-w-0 flex-1 text-center leading-tight">
+                    <p className="text-sm font-semibold">{format(selectedMonth, 'yyyy년 M월', { locale: ko })}</p>
+                    <p className="text-[11px] text-muted-foreground">지난달/다음달을 선택할 수 있어요</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 shrink-0 px-2 text-xs"
+                    onClick={() => setSelectedMonth(startOfMonth(currentMonth))}
+                  >
+                    기준월
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 shrink-0"
+                    onClick={() => setSelectedMonth((prev) => addMonths(prev, 1))}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
             </div>
             
-            <TabsContent value="wanted" className="flex-1 flex flex-col overflow-hidden p-6 pt-4 space-y-4">
-                 <div className="flex-1 overflow-y-auto min-h-0 flex flex-col relative border rounded-lg shadow-sm">
+            <TabsContent value="wanted" className="mt-0 flex-1 min-h-0 overflow-hidden p-6 pt-3 data-[state=active]:flex data-[state=active]:flex-col">
+                 <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 flex flex-col relative border rounded-lg shadow-sm">
                     {isLoading && !wantedOffs ? (
                         <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10">
                             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -206,7 +252,7 @@ export function WantedOffSheet({ staff, open, onOpenChange, currentMonth }: Want
                                  <div key={weekStart.toISOString()} className="grid grid-cols-7 flex-1 divide-x min-h-0">
                                      {days.map((date, dayIdx) => {
                                          const dateStr = format(date, 'yyyy-MM-dd')
-                                         const isCurrentMonth = isSameMonth(date, currentMonth)
+                                         const isCurrentMonth = isSameMonth(date, selectedMonth)
                                          const isSelected = selectedDates.some(d => format(d, 'yyyy-MM-dd') === dateStr)
                                          const isTodayDate = isToday(date)
                                          const holidayName = isHoliday(date)
@@ -250,7 +296,7 @@ export function WantedOffSheet({ staff, open, onOpenChange, currentMonth }: Want
                     </div>
                  </div>
 
-                 <div className="text-[11px] text-muted-foreground text-center">
+                 <div className="text-[11px] text-muted-foreground text-center shrink-0 mt-4">
                     {staff.employment_type === 'full-time' 
                         ? "날짜를 클릭하여 선택/해제 (월 최대 2일)" 
                         : "⚠️ 정규직 외 직원도 선택 가능하도록 변경되었습니다."}
@@ -267,8 +313,8 @@ export function WantedOffSheet({ staff, open, onOpenChange, currentMonth }: Want
                  </div>
             </TabsContent>
 
-            <TabsContent value="share" className="flex-1 p-6">
-                <ScheduleShareTab staff={staff} currentMonth={currentMonth} />
+            <TabsContent value="share" className="mt-0 flex-1 min-h-0 overflow-hidden p-6 data-[state=active]:block">
+                <ScheduleShareTab staff={staff} targetMonth={selectedMonth} />
             </TabsContent>
         </Tabs>
       </SheetContent>
@@ -277,12 +323,12 @@ export function WantedOffSheet({ staff, open, onOpenChange, currentMonth }: Want
 }
 
 
-function ScheduleShareTab({ staff, currentMonth }: { staff: any, currentMonth: Date }) {
+function ScheduleShareTab({ staff, targetMonth }: { staff: any, targetMonth: Date }) {
     const weeks = useMemo(() => {
-        const start = startOfMonth(currentMonth)
-        const end = endOfMonth(currentMonth)
+        const start = startOfMonth(targetMonth)
+        const end = endOfMonth(targetMonth)
         return eachWeekOfInterval({ start, end }, { weekStartsOn: 1 }) // Monday start
-    }, [currentMonth])
+    }, [targetMonth])
 
     const [copiedWeek, setCopiedWeek] = useState<string | null>(null)
 
@@ -290,14 +336,17 @@ function ScheduleShareTab({ staff, currentMonth }: { staff: any, currentMonth: D
         const weekEnd = addDays(weekStart, 6)
         const days = eachDayOfInterval({ start: weekStart, end: weekEnd })
         
-        let text = `${format(currentMonth, 'M월')} ${getWeek(weekStart, { weekStartsOn: 1 }) - getWeek(startOfMonth(currentMonth), { weekStartsOn: 1 }) + 1}주차 일정 (${staff.name})\n`
+        const weekIndex = weeks.findIndex((week) => week.getTime() === weekStart.getTime())
+        const weekNum = weekIndex >= 0 ? weekIndex + 1 : 1
+        let text = `${format(targetMonth, 'M월', { locale: ko })} ${weekNum}주차 ${staff.name} 선생님 근무표입니다.\n`
         
         const scheduleLines = days.map(day => {
             const dateStr = format(day, 'yyyy-MM-dd')
-            const shift = staff.schedule.find((s: any) => s.date === dateStr)?.type || '/'
-            const dayName = format(day, 'E', { locale: ko })
-            const dayNum = format(day, 'd')
-            return `${dayName}(${dayNum}): ${shift}`
+            const shift = staff.schedule.find((s: any) => s.date === dateStr)?.type ?? '/'
+            const shiftLabel = getReadableShiftLabel(shift)
+            const dayName = format(day, 'EEEE', { locale: ko })
+            const dayNum = format(day, 'M월 d일')
+            return `${dayNum} ${dayName}: ${shiftLabel}`
         })
         
         text += scheduleLines.join('\n')
@@ -309,82 +358,92 @@ function ScheduleShareTab({ staff, currentMonth }: { staff: any, currentMonth: D
     }
 
     return (
-        <div className="space-y-4 pb-6">
+        <div className="h-full min-h-0 overflow-y-auto overflow-x-hidden space-y-4 pb-6 pr-1">
+            <div className="rounded-xl border-2 border-primary/20 bg-primary/5 px-4 py-3">
+                <p className="text-base font-bold">쉬운 공유 안내</p>
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                  각 주차 카드의 `한 주 복사` 버튼을 누른 뒤, 카카오톡에 붙여넣기 하면 됩니다.
+                </p>
+            </div>
+
             {weeks.map((weekStart, i) => {
                  const weekEnd = addDays(weekStart, 6)
                  const weekNum = i + 1
                  const days = eachDayOfInterval({ start: weekStart, end: weekEnd })
                  
                  return (
-                    <div key={weekStart.toISOString()} className="border rounded-md p-3 space-y-2 bg-card shadow-sm">
+                    <div key={weekStart.toISOString()} className="rounded-xl border-2 border-border bg-card p-4 space-y-3 shadow-sm">
                         <div className="flex items-center justify-between">
                             <div className="flex items-baseline gap-2">
-                                <h4 className="font-bold text-sm">
-                                    {format(currentMonth, 'M월')} {weekNum}주차 
+                                <h4 className="text-lg font-black tracking-tight">
+                                    {format(targetMonth, 'M월', { locale: ko })} {weekNum}주차
                                 </h4>
-                                <span className="text-muted-foreground text-xs font-normal">
+                                <span className="text-sm text-muted-foreground font-medium">
                                     {format(weekStart, 'MM.dd')} ~ {format(weekEnd, 'MM.dd')}
                                 </span>
                             </div>
                             <Button 
                                 variant="outline" 
                                 size="sm" 
-                                className="h-7 text-xs gap-1.5 px-2 bg-muted/20 hover:bg-muted"
+                                className="h-10 text-sm font-semibold gap-1.5 px-3 bg-muted/20 hover:bg-muted"
                                 onClick={() => handleCopy(weekStart)}
                             >
                                 {copiedWeek === weekStart.toISOString() ? (
                                     <>
                                         <Check className="h-3 w-3 text-green-600" />
-                                        복사됨
+                                        복사 완료
                                     </>
                                 ) : (
                                     <>
                                         <Copy className="h-3 w-3" />
-                                        복사
+                                        한 주 복사
                                     </>
                                 )}
                             </Button>
                         </div>
                         
-                        <div className="grid grid-cols-7 gap-px border rounded-md overflow-hidden bg-muted">
-                            {['월', '화', '수', '목', '금', '토', '일'].map((dayName, idx) => (
-                                <div key={dayName} className={cn(
-                                    "py-1.5 text-center text-[10px] font-medium text-muted-foreground bg-gray-50",
-                                    dayName === '일' && "text-red-500 bg-red-50/50",
-                                    dayName === '토' && "text-blue-500 bg-blue-50/50"
-                                )}>
-                                    {dayName}
-                                </div>
-                            ))}
-                            {days.map((day, idx) => {
+                        <div className="space-y-2">
+                            {days.map((day) => {
                                 const dateStr = format(day, 'yyyy-MM-dd')
-                                const shift = staff.schedule.find((s: any) => s.date === dateStr)?.type || '/'
-                                const dayName = format(day, 'E', { locale: ko })
-                                const isHolidayDay = isHoliday(day)
+                                const shift = staff.schedule.find((s: any) => s.date === dateStr)?.type ?? '/'
+                                const dayName = format(day, 'EEEE', { locale: ko })
+                                const parsed = parseShift(shift)
+                                const readableShift = getReadableShiftLabel(shift)
+                                const readableDetail = getReadableShiftDetail(shift)
+                                const isHolidayDay = Boolean(isHoliday(day))
                                 
                                 return (
-                                    <div key={dateStr} className={cn(
-                                        "flex flex-col items-center justify-center py-1.5 h-[42px] transition-colors bg-background",
-                                        isHolidayDay && "bg-red-50/30"
-                                    )}>
-                                        <div className={cn(
-                                            "text-[10px] font-medium mb-0.5 w-4 h-4 flex items-center justify-center rounded-full leading-none",
-                                            dayName === '일' && "text-red-500",
-                                            dayName === '토' && "text-blue-500",
-                                            isHolidayDay && "text-red-500 font-bold",
-                                            format(day, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd') && "bg-primary text-primary-foreground"
-                                        )}>
-                                            {format(day, 'd')}
+                                    <div
+                                      key={dateStr}
+                                      className={cn(
+                                        "rounded-lg border-2 px-3 py-2",
+                                        parsed.type === '/' && "bg-muted/25 border-muted",
+                                        parsed.type !== '/' && "bg-background border-border",
+                                        isHolidayDay && "border-red-200 bg-red-50/40"
+                                      )}
+                                    >
+                                        <div className="flex items-center justify-between gap-3">
+                                          <p className="text-sm font-semibold">
+                                            {format(day, 'M월 d일')} {dayName}
+                                          </p>
+                                          <span
+                                            className={cn(
+                                              "rounded-md px-2 py-1 text-sm font-bold",
+                                              getShiftBadgeClass(parsed.type)
+                                            )}
+                                          >
+                                            {parsed.original || '/'}
+                                          </span>
                                         </div>
-                                        {isHolidayDay && (
-                                            <span className="text-[8px] text-red-500 truncate max-w-full px-1 leading-none mb-0.5">
-                                                {isHolidayDay}
-                                            </span>
-                                        )}
-                                        <span className={cn(
-                                            "text-xs font-bold",
-                                            shift === '/' ? "text-muted-foreground/30 font-normal" : "text-foreground"
-                                        )}>{shift}</span>
+                                        <p className={cn(
+                                          "mt-1 text-lg font-black tracking-tight",
+                                          parsed.type === '/' ? "text-muted-foreground" : "text-foreground"
+                                        )}>
+                                          {readableShift}
+                                        </p>
+                                        {readableDetail ? (
+                                          <p className="text-sm text-muted-foreground">{readableDetail}</p>
+                                        ) : null}
                                     </div>
                                 )
                             })}
@@ -394,4 +453,31 @@ function ScheduleShareTab({ staff, currentMonth }: { staff: any, currentMonth: D
             })}
         </div>
     )
+}
+
+function getReadableShiftLabel(shift: string) {
+  const parsed = parseShift(shift)
+  if (parsed.type === '/') return '휴무'
+  if (parsed.type === 'D') return '데이 근무'
+  if (parsed.type === 'E') return '이브닝 근무'
+  if (parsed.type === 'N') return '나이트 근무'
+  if (parsed.type === 'M') return '미들 근무'
+  return '데이 + 이브닝 연속 근무'
+}
+
+function getReadableShiftDetail(shift: string) {
+  const parsed = parseShift(shift)
+  if (!parsed.otHours) return ''
+  if (parsed.otPosition === 'pre') return `근무 전 연장 ${parsed.otHours}시간 포함`
+  if (parsed.otPosition === 'post') return `근무 후 연장 ${parsed.otHours}시간 포함`
+  return ''
+}
+
+function getShiftBadgeClass(type: ReturnType<typeof parseShift>['type']) {
+  if (type === 'D') return 'bg-amber-100 text-amber-800'
+  if (type === 'E') return 'bg-emerald-100 text-emerald-800'
+  if (type === 'N') return 'bg-blue-100 text-blue-800'
+  if (type === 'M') return 'bg-violet-100 text-violet-800'
+  if (type === 'DE') return 'bg-indigo-100 text-indigo-800'
+  return 'bg-slate-100 text-slate-700'
 }

@@ -18,8 +18,8 @@ import { authFetch } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { addDays, differenceInDays, format, parseISO } from 'date-fns'
-import { Baby, BedDouble, CalendarRange, Eye, EyeOff, LogIn, LogOut, RefreshCw, Users } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { Baby, BedDouble, CalendarRange, Eye, EyeOff, GripVertical, LogIn, LogOut, RefreshCw, Users } from 'lucide-react'
+import { useMemo, useState, type DragEvent } from 'react'
 
 interface Stay {
   id: string
@@ -56,6 +56,7 @@ interface Room {
   number: string
   type: 'Prestige' | 'VIP' | 'VVIP'
   status: 'Empty' | 'Occupied'
+  activeStayId?: string
   motherName?: string
   babyCount?: number
   babyNames?: string[]
@@ -246,6 +247,8 @@ export function RoomView() {
   const [detailDialogOpen, setDetailDialogOpen] = useState(false)
   const [selectedStat, setSelectedStat] = useState<StatCardType>('todayCheckIn')
   const [showTodayNotice, setShowTodayNotice] = useState(true)
+  const [draggingRoomNumber, setDraggingRoomNumber] = useState<string | null>(null)
+  const [dragOverRoomNumber, setDragOverRoomNumber] = useState<string | null>(null)
   const [syncFeedback, setSyncFeedback] = useState<{
     type: 'success' | 'error'
     message: string
@@ -304,6 +307,7 @@ export function RoomView() {
       number: room.room_number,
       type: room.room_type,
       status,
+      activeStayId: stay?.id,
       motherName: stay?.mother_name,
       babyCount: stay?.baby_count,
       babyNames: stay?.baby_names,
@@ -422,6 +426,110 @@ export function RoomView() {
       })
     }
   })
+
+  const roomTransferMutation = useMutation({
+    mutationFn: async ({ sourceRoomNumber, targetRoomNumber }: { sourceRoomNumber: string; targetRoomNumber: string }) => {
+      if (sourceRoomNumber === targetRoomNumber) {
+        return { isSwap: false, sourceRoomNumber, targetRoomNumber, sourceMotherName: '', targetMotherName: '' }
+      }
+
+      const sourceRoom = rooms.find((room) => room.number === sourceRoomNumber)
+      const targetRoom = rooms.find((room) => room.number === targetRoomNumber)
+
+      if (!sourceRoom?.activeStayId) {
+        throw new Error('이동할 입실중 산모가 없습니다.')
+      }
+
+      const updateStayRoom = async (stayId: string, roomNumber: string) => {
+        const res = await authFetch('/api/stays', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: stayId, room_number: roomNumber })
+        })
+
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}))
+          throw new Error(body?.error || '객실 변경 저장에 실패했습니다.')
+        }
+      }
+
+      await updateStayRoom(sourceRoom.activeStayId, targetRoomNumber)
+
+      const isSwap = Boolean(targetRoom?.activeStayId)
+      if (isSwap && targetRoom?.activeStayId) {
+        try {
+          await updateStayRoom(targetRoom.activeStayId, sourceRoomNumber)
+        } catch (error) {
+          await updateStayRoom(sourceRoom.activeStayId, sourceRoomNumber).catch(() => null)
+          throw error
+        }
+      }
+
+      return {
+        isSwap,
+        sourceRoomNumber,
+        targetRoomNumber,
+        sourceMotherName: sourceRoom.motherName || '산모',
+        targetMotherName: targetRoom?.motherName || '산모'
+      }
+    },
+    onSuccess: async (result) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['rooms'] }),
+        queryClient.invalidateQueries({ queryKey: ['stays'] }),
+        queryClient.invalidateQueries({ queryKey: ['daily-stats'] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard-stays'] })
+      ])
+
+      const summary = result.isSwap
+        ? `${result.sourceRoomNumber}호 ${result.sourceMotherName} ↔ ${result.targetRoomNumber}호 ${result.targetMotherName}`
+        : `${result.sourceRoomNumber}호 ${result.sourceMotherName} → ${result.targetRoomNumber}호`
+      alert(`객실 변경 완료\n${summary}`)
+    },
+    onError: (error) => {
+      alert(error instanceof Error ? error.message : '객실 변경 중 오류가 발생했습니다.')
+    },
+    onSettled: () => {
+      setDraggingRoomNumber(null)
+      setDragOverRoomNumber(null)
+    }
+  })
+
+  const handleRoomDragStart = (room: Room, event: DragEvent<HTMLDivElement>) => {
+    if (roomTransferMutation.isPending || !room.activeStayId) {
+      event.preventDefault()
+      return
+    }
+
+    setDraggingRoomNumber(room.number)
+    setDragOverRoomNumber(null)
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', room.number)
+  }
+
+  const handleRoomDragOver = (targetRoomNumber: string, event: DragEvent<HTMLDivElement>) => {
+    if (!draggingRoomNumber || draggingRoomNumber === targetRoomNumber) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+    setDragOverRoomNumber(targetRoomNumber)
+  }
+
+  const handleRoomDrop = (targetRoomNumber: string, event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    const sourceRoomNumber = draggingRoomNumber || event.dataTransfer.getData('text/plain')
+    if (!sourceRoomNumber || sourceRoomNumber === targetRoomNumber) {
+      setDragOverRoomNumber(null)
+      return
+    }
+
+    roomTransferMutation.mutate({ sourceRoomNumber, targetRoomNumber })
+  }
+
+  const handleRoomDragEnd = () => {
+    if (roomTransferMutation.isPending) return
+    setDraggingRoomNumber(null)
+    setDragOverRoomNumber(null)
+  }
 
   const statDialogData = useMemo(() => {
     switch (selectedStat) {
@@ -716,6 +824,13 @@ export function RoomView() {
                 floorLabel="5F"
                 rooms={rooms5F}
                 onRoomClick={handleRoomClick}
+                draggingRoomNumber={draggingRoomNumber}
+                dragOverRoomNumber={dragOverRoomNumber}
+                isRoomMoving={roomTransferMutation.isPending}
+                onRoomDragStart={handleRoomDragStart}
+                onRoomDragOver={handleRoomDragOver}
+                onRoomDrop={handleRoomDrop}
+                onRoomDragEnd={handleRoomDragEnd}
               />
             )}
 
@@ -725,6 +840,13 @@ export function RoomView() {
                 floorLabel="6F"
                 rooms={rooms6F}
                 onRoomClick={handleRoomClick}
+                draggingRoomNumber={draggingRoomNumber}
+                dragOverRoomNumber={dragOverRoomNumber}
+                isRoomMoving={roomTransferMutation.isPending}
+                onRoomDragStart={handleRoomDragStart}
+                onRoomDragOver={handleRoomDragOver}
+                onRoomDrop={handleRoomDrop}
+                onRoomDragEnd={handleRoomDragEnd}
               />
             )}
           </>
@@ -895,12 +1017,26 @@ function RoomFloorSection({
   title,
   floorLabel,
   rooms,
-  onRoomClick
+  onRoomClick,
+  draggingRoomNumber,
+  dragOverRoomNumber,
+  isRoomMoving,
+  onRoomDragStart,
+  onRoomDragOver,
+  onRoomDrop,
+  onRoomDragEnd
 }: {
   title: string
   floorLabel: string
   rooms: Room[]
   onRoomClick: (roomNumber: string) => void
+  draggingRoomNumber: string | null
+  dragOverRoomNumber: string | null
+  isRoomMoving: boolean
+  onRoomDragStart: (room: Room, event: DragEvent<HTMLDivElement>) => void
+  onRoomDragOver: (targetRoomNumber: string, event: DragEvent<HTMLDivElement>) => void
+  onRoomDrop: (targetRoomNumber: string, event: DragEvent<HTMLDivElement>) => void
+  onRoomDragEnd: () => void
 }) {
   return (
     <section className="space-y-4">
@@ -910,7 +1046,20 @@ function RoomFloorSection({
       </h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {rooms.map((room) => (
-          <RoomCard key={room.id} room={room} onClick={() => onRoomClick(room.number)} />
+          <RoomCard
+            key={room.id}
+            room={room}
+            onClick={() => onRoomClick(room.number)}
+            canDrag={Boolean(room.activeStayId)}
+            isDraggingAny={Boolean(draggingRoomNumber)}
+            isDragSource={draggingRoomNumber === room.number}
+            isDragOver={dragOverRoomNumber === room.number}
+            isRoomMoving={isRoomMoving}
+            onDragStart={(event) => onRoomDragStart(room, event)}
+            onDragOver={(event) => onRoomDragOver(room.number, event)}
+            onDrop={(event) => onRoomDrop(room.number, event)}
+            onDragEnd={onRoomDragEnd}
+          />
         ))}
       </div>
     </section>
@@ -960,7 +1109,31 @@ function InfoChip({
   )
 }
 
-function RoomCard({ room, onClick }: { room: Room; onClick?: () => void }) {
+function RoomCard({
+  room,
+  onClick,
+  canDrag = false,
+  isDraggingAny = false,
+  isDragSource = false,
+  isDragOver = false,
+  isRoomMoving = false,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd
+}: {
+  room: Room
+  onClick?: () => void
+  canDrag?: boolean
+  isDraggingAny?: boolean
+  isDragSource?: boolean
+  isDragOver?: boolean
+  isRoomMoving?: boolean
+  onDragStart?: (event: DragEvent<HTMLDivElement>) => void
+  onDragOver?: (event: DragEvent<HTMLDivElement>) => void
+  onDrop?: (event: DragEvent<HTMLDivElement>) => void
+  onDragEnd?: () => void
+}) {
   const hasUpcoming = room.upcomingStays.length > 0
   const isEmpty = room.status === 'Empty'
   const nextUpcoming = room.upcomingStays[0]
@@ -984,9 +1157,20 @@ function RoomCard({ room, onClick }: { room: Room; onClick?: () => void }) {
 
   return (
     <Card
-      onClick={onClick}
+      draggable={canDrag && !isRoomMoving}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
+      onClick={() => {
+        if (isDraggingAny || isRoomMoving) return
+        onClick?.()
+      }}
       className={cn(
         'group cursor-pointer border transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md',
+        canDrag && !isRoomMoving && 'cursor-grab active:cursor-grabbing',
+        isDragSource && 'opacity-55 ring-2 ring-primary/30',
+        isDragOver && 'ring-2 ring-blue-300 border-blue-300 bg-blue-50/40',
         checkoutBadge === 'D-Day' && 'border-red-300 bg-red-50/40',
         checkoutBadge === 'D-1' && 'border-red-200',
         checkoutBadge === 'D-2' && 'border-yellow-200',
@@ -998,6 +1182,12 @@ function RoomCard({ room, onClick }: { room: Room; onClick?: () => void }) {
           <div className="flex items-center gap-2">
             <div className="text-2xl font-black tracking-tight leading-none">{room.number}</div>
             <Badge variant="secondary">{room.type}</Badge>
+            {canDrag && (
+              <Badge variant="outline" className="h-6 px-2 text-[10px] text-muted-foreground">
+                <GripVertical className="mr-1 h-3 w-3" />
+                드래그 이동
+              </Badge>
+            )}
           </div>
           <div className="flex items-center gap-1">
             <Badge variant={isEmpty ? 'outline' : 'default'}>
