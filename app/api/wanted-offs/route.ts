@@ -2,6 +2,11 @@
 import { supabase } from '@/lib/supabase'
 import { NextResponse } from 'next/server'
 
+const getErrorMessage = (error: unknown) => {
+  if (error instanceof Error && error.message) return error.message
+  return 'Server Error'
+}
+
 // GET: Fetch wanted offs for a specific month
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
@@ -72,8 +77,8 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json(data)
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || 'Server Error' }, { status: 500 })
+  } catch (error: unknown) {
+    return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 })
   }
 }
 
@@ -95,7 +100,7 @@ export async function DELETE(request: Request) {
     if (error) throw error
 
     return NextResponse.json({ success: true })
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || 'Server Error' }, { status: 500 })
+  } catch (error: unknown) {
+    return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 })
   }
 }

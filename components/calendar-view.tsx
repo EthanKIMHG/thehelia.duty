@@ -1,42 +1,28 @@
 'use client'
 
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet'
 import { authFetch } from '@/lib/api'
-import { isHoliday } from '@/lib/holidays'
-import { cn } from '@/lib/utils'
 import { useQuery } from '@tanstack/react-query'
 import {
   addMonths,
   eachDayOfInterval,
   endOfMonth,
   endOfWeek,
-  format, isSameMonth,
-  isToday,
+  format,
   startOfMonth,
   startOfWeek,
-  subMonths
+  subMonths,
 } from 'date-fns'
 import { ko } from 'date-fns/locale'
-import { ChevronLeft, ChevronRight, LogIn, LogOut, MoreHorizontal } from 'lucide-react'
-import { useState } from 'react'
+import { ChevronLeft, ChevronRight, LogIn, LogOut } from 'lucide-react'
+import { type MouseEvent, useMemo, useState } from 'react'
+import { CalendarMonthGrid } from './calendar-view/calendar-month-grid'
+import { CalendarViewSkeleton } from './calendar-view/calendar-view-skeleton'
+import { DayDetailsSheet } from './calendar-view/day-details-sheet'
+import type { CalendarDateEvents, CalendarStay } from './calendar-view/types'
 
-interface Stay {
-  id: string
-  room_number: string
-  mother_name: string
-  baby_count: number
-  check_in_date: string
-  check_out_date: string
-  status: string
-}
+const MAX_VISIBLE_EVENTS = 2
+const EMPTY_EVENTS: CalendarDateEvents = { checkIns: [], checkOuts: [] }
 
 export function CalendarView() {
   const [currentDate, setCurrentDate] = useState(new Date())
@@ -44,80 +30,115 @@ export function CalendarView() {
   const [drawerOpen, setDrawerOpen] = useState(false)
 
   const monthStr = format(currentDate, 'yyyy-MM')
-  const { data: staysData } = useQuery<Stay[]>({
+  const {
+    data: staysData = [],
+    isPending,
+    isFetching,
+    isError,
+    refetch,
+  } = useQuery<CalendarStay[]>({
     queryKey: ['stays', monthStr],
     queryFn: async () => {
       const res = await authFetch(`/api/stays?month=${monthStr}`)
+      if (!res.ok) throw new Error('캘린더 데이터를 불러오지 못했습니다.')
       return res.json()
-    }
+    },
+    placeholderData: (previousData) => previousData,
   })
 
-  const firstDayOfMonth = startOfMonth(currentDate)
-  const lastDayOfMonth = endOfMonth(currentDate)
-  const startDate = startOfWeek(firstDayOfMonth, { weekStartsOn: 0 })
-  const endDate = endOfWeek(lastDayOfMonth, { weekStartsOn: 0 })
+  const weeks = useMemo(() => {
+    const firstDayOfMonth = startOfMonth(currentDate)
+    const lastDayOfMonth = endOfMonth(currentDate)
+    const startDate = startOfWeek(firstDayOfMonth, { weekStartsOn: 0 })
+    const endDate = endOfWeek(lastDayOfMonth, { weekStartsOn: 0 })
+    const days = eachDayOfInterval({ start: startDate, end: endDate })
 
-  const days = eachDayOfInterval({ start: startDate, end: endDate })
+    const groupedWeeks: Date[][] = []
+    for (let i = 0; i < days.length; i += 7) {
+      groupedWeeks.push(days.slice(i, i + 7))
+    }
+    return groupedWeeks
+  }, [currentDate])
 
-  const weeks = []
-  for (let i = 0; i < days.length; i += 7) {
-    weeks.push(days.slice(i, i + 7))
-  }
+  const eventsByDate = useMemo(() => {
+    const map = new Map<string, CalendarDateEvents>()
+    for (const stay of staysData) {
+      if (!map.has(stay.check_in_date)) {
+        map.set(stay.check_in_date, { checkIns: [], checkOuts: [] })
+      }
+      map.get(stay.check_in_date)?.checkIns.push(stay)
 
-  const prevMonth = () => setCurrentDate(subMonths(currentDate, 1))
-  const nextMonth = () => setCurrentDate(addMonths(currentDate, 1))
-  const goToday = () => setCurrentDate(new Date())
+      if (!map.has(stay.check_out_date)) {
+        map.set(stay.check_out_date, { checkIns: [], checkOuts: [] })
+      }
+      map.get(stay.check_out_date)?.checkOuts.push(stay)
+    }
+    return map
+  }, [staysData])
 
-  // Helper to get check-ins and check-outs for a date
-  const getEventsForDate = (date: Date) => {
-    const dateStr = format(date, 'yyyy-MM-dd')
-    const checkIns = staysData?.filter(s => s.check_in_date === dateStr) || []
-    const checkOuts = staysData?.filter(s => s.check_out_date === dateStr) || []
-    return { checkIns, checkOuts }
-  }
+  const getEventsForDate = (date: Date): CalendarDateEvents =>
+    eventsByDate.get(format(date, 'yyyy-MM-dd')) ?? EMPTY_EVENTS
 
-  const handleMoreClick = (date: Date, e: React.MouseEvent) => {
-    e.stopPropagation()
+  const selectedDateEvents = useMemo(() => {
+    if (!selectedDate) return EMPTY_EVENTS
+    return eventsByDate.get(format(selectedDate, 'yyyy-MM-dd')) ?? EMPTY_EVENTS
+  }, [selectedDate, eventsByDate])
+
+  const handleMoreClick = (date: Date, event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation()
     setSelectedDate(date)
     setDrawerOpen(true)
   }
 
-  const selectedDateEvents = selectedDate ? getEventsForDate(selectedDate) : { checkIns: [], checkOuts: [] }
+  const prevMonth = () => setCurrentDate((prev) => subMonths(prev, 1))
+  const nextMonth = () => setCurrentDate((prev) => addMonths(prev, 1))
+  const goToday = () => setCurrentDate(new Date())
 
-  // Max visible items in calendar cell
-  const MAX_VISIBLE = 2
+  if (isPending) return <CalendarViewSkeleton />
+
+  if (isError) {
+    return (
+      <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-4">
+        <p className="text-sm text-destructive">캘린더 데이터를 불러오는 중 오류가 발생했습니다.</p>
+        <Button size="sm" variant="outline" className="mt-3" onClick={() => void refetch()}>
+          다시 시도
+        </Button>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold">
-          {format(currentDate, 'yyyy년 M월', { locale: ko })}
-        </h2>
+        <div className="space-y-0.5">
+          <h2 className="text-xl font-semibold">{format(currentDate, 'yyyy년 M월', { locale: ko })}</h2>
+          {isFetching ? <p className="text-xs text-muted-foreground">네트워크 동기화 중...</p> : null}
+        </div>
+
         <div className="flex items-center space-x-2">
-          {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center space-x-2">
+          <div className="hidden items-center space-x-2 md:flex">
             <Button variant="outline" size="icon" onClick={prevMonth}>
-                <ChevronLeft className="h-4 w-4" />
+              <ChevronLeft className="h-4 w-4" />
             </Button>
-            <Button variant="outline" onClick={goToday}>오늘</Button>
+            <Button variant="outline" onClick={goToday}>
+              오늘
+            </Button>
             <Button variant="outline" size="icon" onClick={nextMonth}>
-                <ChevronRight className="h-4 w-4" />
+              <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
 
-          {/* Mobile Navigation & Actions */}
-          <div className="md:hidden flex items-center gap-1">
-             <Button variant="ghost" size="icon" onClick={prevMonth} className="h-8 w-8">
-                <ChevronLeft className="h-4 w-4" />
+          <div className="flex items-center gap-1 md:hidden">
+            <Button variant="ghost" size="icon" onClick={prevMonth} className="h-8 w-8">
+              <ChevronLeft className="h-4 w-4" />
             </Button>
-             <Button variant="ghost" size="icon" onClick={nextMonth} className="h-8 w-8">
-                <ChevronRight className="h-4 w-4" />
+            <Button variant="ghost" size="icon" onClick={nextMonth} className="h-8 w-8">
+              <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
         </div>
       </div>
 
-      {/* Legend */}
       <div className="flex gap-4 text-xs">
         <div className="flex items-center gap-1">
           <LogIn className="h-3 w-3 text-green-600" />
@@ -129,196 +150,20 @@ export function CalendarView() {
         </div>
       </div>
 
-      <div className="border rounded-lg shadow-sm bg-card text-card-foreground overflow-hidden">
-        {/* Header */}
-        <div className="grid grid-cols-7 border-b bg-muted/50">
-          {['일', '월', '화', '수', '목', '금', '토'].map((day, i) => (
-            <div 
-              key={day} 
-              className={cn(
-                "p-3 text-center text-sm font-medium",
-                i === 0 && "text-red-500",
-                i === 6 && "text-blue-500"
-              )}
-            >
-              {day}
-            </div>
-          ))}
-        </div>
+      <CalendarMonthGrid
+        currentDate={currentDate}
+        weeks={weeks}
+        maxVisibleEvents={MAX_VISIBLE_EVENTS}
+        getEventsForDate={getEventsForDate}
+        onMoreClick={handleMoreClick}
+      />
 
-        {/* Calendar Grid */}
-        <div className="divide-y">
-          {weeks.map((week, weekIndex) => (
-            <div key={weekIndex} className="grid grid-cols-7 divide-x">
-              {week.map((date, dayIndex) => {
-                const holidayName = isHoliday(date)
-                const isSunday = dayIndex === 0
-                const isSaturday = dayIndex === 6
-                const isCurrentMonth = isSameMonth(date, currentDate)
-                const isTodayDate = isToday(date)
-                const { checkIns, checkOuts } = getEventsForDate(date)
-                const totalEvents = checkIns.length + checkOuts.length
-                const hasMore = totalEvents > MAX_VISIBLE
-
-                // Combine and limit visible items
-                const allEvents = [
-                  ...checkIns.map(s => ({ ...s, type: 'in' as const })),
-                  ...checkOuts.map(s => ({ ...s, type: 'out' as const }))
-                ]
-                const visibleEvents = allEvents.slice(0, MAX_VISIBLE)
-                const hiddenCount = allEvents.length - MAX_VISIBLE
-
-                return (
-                  <div 
-                    key={date.toString()} 
-                    className={cn(
-                      "min-h-[140px] p-2 transition-colors hover:bg-muted/10 bg-background",
-                      !isCurrentMonth && "bg-muted/30 text-muted-foreground",
-                      isTodayDate && "bg-accent/10"
-                    )}
-                  >
-                    <div className="flex justify-between items-start">
-                      <span className={cn(
-                        "text-sm font-medium h-6 w-6 flex items-center justify-center rounded-full",
-                        isTodayDate && "bg-primary text-primary-foreground",
-                        !isTodayDate && isSunday && "text-red-500",
-                        !isTodayDate && isSaturday && "text-blue-500",
-                        holidayName && "text-red-500"
-                      )}>
-                        {format(date, 'd')}
-                      </span>
-                      {holidayName && (
-                        <span className="text-xs text-red-500 font-medium truncate max-w-[80px] text-right">
-                          {holidayName}
-                        </span>
-                      )}
-                    </div>
-                    
-                    {/* Check-in/Check-out Events */}
-                    <div className="mt-1 space-y-0.5">
-                      {visibleEvents.map(event => (
-                        <div 
-                          key={`${event.type}-${event.id}`}
-                          className={cn(
-                            "flex items-center gap-1 text-xs px-1.5 py-0.5 rounded truncate",
-                            event.type === 'in' 
-                              ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300"
-                              : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
-                          )}
-                        >
-                          {event.type === 'in' 
-                            ? <span>입실:</span>
-                            : <span>퇴실:</span>
-                          }
-                          <span className="truncate">{event.room_number} {event.mother_name}</span>
-                        </div>
-                      ))}
-                      
-                      {/* More button */}
-                      {hasMore && (
-                        <button
-                          onClick={(e) => handleMoreClick(date, e)}
-                          className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-muted hover:bg-muted/80 text-muted-foreground w-full justify-center transition-colors"
-                        >
-                          <MoreHorizontal className="h-3 w-3" />
-                          <span>+{hiddenCount}개 더보기</span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Day Details Drawer */}
-      <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
-        <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle className="text-xl flex items-center gap-2">
-              <span className="bg-primary text-primary-foreground px-3 py-1 rounded">
-                {selectedDate && format(selectedDate, 'M월 d일 (E)', { locale: ko })}
-              </span>
-              일정
-            </SheetTitle>
-            <SheetDescription>
-              이 날의 입실 및 퇴실 예정 산모 목록입니다.
-            </SheetDescription>
-          </SheetHeader>
-
-          <div className="py-6 space-y-6">
-            {/* Check-ins */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <LogIn className="h-4 w-4 text-green-600" />
-                <span>입실 예정</span>
-                <Badge variant="secondary">{selectedDateEvents.checkIns.length}</Badge>
-              </div>
-              
-              {selectedDateEvents.checkIns.length === 0 ? (
-                <div className="text-sm text-muted-foreground py-3 text-center border rounded-lg border-dashed">
-                  입실 예정 없음
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {selectedDateEvents.checkIns.map(stay => (
-                    <div 
-                      key={stay.id}
-                      className="flex items-center justify-between p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800"
-                    >
-                      <div className="flex items-center gap-3">
-                        <Badge className="bg-green-600">{stay.room_number}호</Badge>
-                        <div>
-                          <div className="font-medium">{stay.mother_name}</div>
-                          <div className="text-xs text-muted-foreground">
-                            아기 {stay.baby_count}명 • ~{stay.check_out_date}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Check-outs */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <LogOut className="h-4 w-4 text-red-600" />
-                <span>퇴실 예정</span>
-                <Badge variant="secondary">{selectedDateEvents.checkOuts.length}</Badge>
-              </div>
-              
-              {selectedDateEvents.checkOuts.length === 0 ? (
-                <div className="text-sm text-muted-foreground py-3 text-center border rounded-lg border-dashed">
-                  퇴실 예정 없음
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {selectedDateEvents.checkOuts.map(stay => (
-                    <div 
-                      key={stay.id}
-                      className="flex items-center justify-between p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800"
-                    >
-                      <div className="flex items-center gap-3">
-                        <Badge className="bg-red-600">{stay.room_number}호</Badge>
-                        <div>
-                          <div className="font-medium">{stay.mother_name}</div>
-                          <div className="text-xs text-muted-foreground">
-                            아기 {stay.baby_count}명 • {stay.check_in_date}~
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </SheetContent>
-      </Sheet>
+      <DayDetailsSheet
+        open={drawerOpen}
+        selectedDate={selectedDate}
+        events={selectedDateEvents}
+        onOpenChange={setDrawerOpen}
+      />
     </div>
   )
 }

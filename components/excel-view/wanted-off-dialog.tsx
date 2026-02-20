@@ -20,9 +20,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
 import { authFetch } from '@/lib/api'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import type { StaffScheduleViewModel, WantedOffRecord } from './types'
 
 interface WantedOffSheetProps {
-  staff: any
+  staff: StaffScheduleViewModel
   open: boolean
   onOpenChange: (open: boolean) => void
   currentMonth: Date
@@ -49,7 +50,7 @@ export function WantedOffSheet({ staff, open, onOpenChange, currentMonth }: Want
   }, [monthStr])
 
   // Fetch existing wanted offs
-  const { data: wantedOffs, isLoading } = useQuery<any[]>({
+  const { data: wantedOffs, isLoading } = useQuery<WantedOffRecord[]>({
     queryKey: ['wanted-offs', staff.id, monthStr],
     queryFn: async () => {
       const res = await authFetch(`/api/wanted-offs?staff_id=${staff.id}&month=${monthStr}`)
@@ -61,7 +62,7 @@ export function WantedOffSheet({ staff, open, onOpenChange, currentMonth }: Want
   // Sync state with fetched data (Only initially)
   useEffect(() => {
     if (wantedOffs) {
-      const dates = wantedOffs.map((w: any) => new Date(w.wanted_date))
+      const dates = wantedOffs.map((wantedOff) => new Date(wantedOff.wanted_date))
       const dateStrs = dates.map((d: Date) => format(d, 'yyyy-MM-dd'))
       setSelectedDates(dates)
       setInitialDates(dateStrs)
@@ -132,7 +133,7 @@ export function WantedOffSheet({ staff, open, onOpenChange, currentMonth }: Want
         toast({ title: "저장 완료", description: "희망 휴무가 적용되었습니다.", className: "bg-green-100 border-green-200" })
         onOpenChange(false)
 
-    } catch (error: any) {
+    } catch {
         toast({
             variant: "destructive",
             title: "오류 발생",
@@ -245,7 +246,7 @@ export function WantedOffSheet({ staff, open, onOpenChange, currentMonth }: Want
 
                     {/* Calendar Body */}
                     <div className="flex-1 flex flex-col divide-y bg-background">
-                         {weeks.map((weekStart, i) => {
+                         {weeks.map((weekStart) => {
                              const weekEnd = addDays(weekStart, 6)
                              const days = eachDayOfInterval({ start: weekStart, end: weekEnd })
                              return (
@@ -297,7 +298,7 @@ export function WantedOffSheet({ staff, open, onOpenChange, currentMonth }: Want
                  </div>
 
                  <div className="text-[11px] text-muted-foreground text-center shrink-0 mt-4">
-                    {staff.employment_type === 'full-time' 
+                    {staff.employmentType === 'full-time' 
                         ? "날짜를 클릭하여 선택/해제 (월 최대 2일)" 
                         : "⚠️ 정규직 외 직원도 선택 가능하도록 변경되었습니다."}
                  </div>
@@ -323,7 +324,7 @@ export function WantedOffSheet({ staff, open, onOpenChange, currentMonth }: Want
 }
 
 
-function ScheduleShareTab({ staff, targetMonth }: { staff: any, targetMonth: Date }) {
+function ScheduleShareTab({ staff, targetMonth }: { staff: StaffScheduleViewModel, targetMonth: Date }) {
     const weeks = useMemo(() => {
         const start = startOfMonth(targetMonth)
         const end = endOfMonth(targetMonth)
@@ -342,7 +343,7 @@ function ScheduleShareTab({ staff, targetMonth }: { staff: any, targetMonth: Dat
         
         const scheduleLines = days.map(day => {
             const dateStr = format(day, 'yyyy-MM-dd')
-            const shift = staff.schedule.find((s: any) => s.date === dateStr)?.type ?? '/'
+            const shift = staff.schedule.find((scheduleEntry) => scheduleEntry.date === dateStr)?.type ?? '/'
             const shiftLabel = getReadableShiftLabel(shift)
             const dayName = format(day, 'EEEE', { locale: ko })
             const dayNum = format(day, 'M월 d일')
@@ -405,7 +406,7 @@ function ScheduleShareTab({ staff, targetMonth }: { staff: any, targetMonth: Dat
                         <div className="space-y-2">
                             {days.map((day) => {
                                 const dateStr = format(day, 'yyyy-MM-dd')
-                                const shift = staff.schedule.find((s: any) => s.date === dateStr)?.type ?? '/'
+                                const shift = staff.schedule.find((scheduleEntry) => scheduleEntry.date === dateStr)?.type ?? '/'
                                 const dayName = format(day, 'EEEE', { locale: ko })
                                 const parsed = parseShift(shift)
                                 const readableShift = getReadableShiftLabel(shift)

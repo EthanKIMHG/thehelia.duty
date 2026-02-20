@@ -7,11 +7,12 @@ import { parseShift } from "@/lib/shift-utils"
 import { format } from "date-fns"
 import { ko } from "date-fns/locale"
 import { AlertTriangle, Baby, CheckCircle2 } from 'lucide-react'
+import type { DailyWarningMap, StaffScheduleViewModel } from "./types"
 
 interface MobileCardProps {
   date: Date
-  schedules: any[] // Staff with their schedule for this date
-  dailyWarnings?: Map<string, any>
+  schedules: StaffScheduleViewModel[]
+  dailyWarnings?: DailyWarningMap
 }
 
 export function MobileCard({ date, schedules, dailyWarnings }: MobileCardProps) {
@@ -20,13 +21,11 @@ export function MobileCard({ date, schedules, dailyWarnings }: MobileCardProps) 
 
   // Get stats for this day
   const stats = dailyWarnings?.get(dateStr)
-  const totalAssigned = (stats?.dAssigned || 0) + (stats?.eAssigned || 0) + (stats?.nAssigned || 0)
-  const requiredTotal = (stats?.requiredPerShift || 0) * 3
   const isUnderstaffed = (stats?.dDiff || 0) < 0 || (stats?.eDiff || 0) < 0 || (stats?.nDiff || 0) < 0
 
   // Group by shift
   const dayShift = schedules.filter(s => {
-      const type = s.schedule.find((sch: any) => sch.date === dateStr)?.type
+      const type = s.schedule.find((scheduleEntry) => scheduleEntry.date === dateStr)?.type
       // Check for D or DE or M (if M counts as Day coverage? Usually separate)
       // User said M (11-18) covers peak.
       // Let's keep M separate as requested by plan, but user logic might imply M helps D/E.
@@ -37,20 +36,17 @@ export function MobileCard({ date, schedules, dailyWarnings }: MobileCardProps) 
       return parseShift(type).type === 'D' || parseShift(type).type === 'DE'
   })
   const eveningShift = schedules.filter(s => {
-      const type = s.schedule.find((sch: any) => sch.date === dateStr)?.type
+      const type = s.schedule.find((scheduleEntry) => scheduleEntry.date === dateStr)?.type
       return parseShift(type).type === 'E' || parseShift(type).type === 'DE'
   })
   const nightShift = schedules.filter(s => {
-      const type = s.schedule.find((sch: any) => sch.date === dateStr)?.type
+      const type = s.schedule.find((scheduleEntry) => scheduleEntry.date === dateStr)?.type
       return parseShift(type).type === 'N'
   })
   const midtermShift = schedules.filter(s => {
-      const type = s.schedule.find((sch: any) => sch.date === dateStr)?.type
+      const type = s.schedule.find((scheduleEntry) => scheduleEntry.date === dateStr)?.type
       return parseShift(type).type === 'M'
   })
-
-  // To determine if there are ANY staff working today (for other logic if needed, or cleanup)
-  const workingStaffCount = dayShift.length + eveningShift.length + nightShift.length + midtermShift.length
 
   return (
     <div className="space-y-3">
@@ -132,7 +128,19 @@ export function MobileCard({ date, schedules, dailyWarnings }: MobileCardProps) 
   )
 }
 
-function ShiftGroup({ title, staff, color, badge, required }: { title: string, staff: any[], color: string, badge: any, required?: number }) {
+function ShiftGroup({
+  title,
+  staff,
+  color,
+  badge,
+  required,
+}: {
+  title: string
+  staff: StaffScheduleViewModel[]
+  color: string
+  badge: 'default' | 'secondary' | 'outline' | 'destructive'
+  required?: number
+}) {
   // Always render, even if empty
   const isShort = required ? staff.length < required : false
 

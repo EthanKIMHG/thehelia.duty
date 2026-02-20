@@ -1,18 +1,36 @@
 'use client'
 
 import { AuthGuard } from '@/components/auth-guard'
-import { CalendarView } from '@/components/calendar-view'
-import { ExcelView } from '@/components/excel-view'
 import { MobileNav } from '@/components/mobile-nav'
 import { Button } from '@/components/ui/button'
 import { ViewSwitcher } from '@/components/view-switcher'
 import { clearSession } from '@/lib/auth'
 import { LogOut, UserPlus } from 'lucide-react'
 import Link from 'next/link'
+import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
 
-import { RoomView } from '@/components/room-view'
+const ViewLoadingFallback = () => (
+  <div className="space-y-3">
+    <div className="h-12 rounded-lg bg-muted/40 animate-pulse" />
+    <div className="h-40 rounded-lg bg-muted/30 animate-pulse" />
+    <div className="h-40 rounded-lg bg-muted/20 animate-pulse" />
+  </div>
+)
+
+const ExcelView = dynamic(
+  () => import('@/components/excel-view').then((mod) => mod.ExcelView),
+  { ssr: false, loading: ViewLoadingFallback }
+)
+const CalendarView = dynamic(
+  () => import('@/components/calendar-view').then((mod) => mod.CalendarView),
+  { ssr: false, loading: ViewLoadingFallback }
+)
+const RoomView = dynamic(
+  () => import('@/components/room-view').then((mod) => mod.RoomView),
+  { ssr: false, loading: ViewLoadingFallback }
+)
 
 export default function Home() {
   const [currentView, setCurrentView] = useState<'excel' | 'calendar' | 'room'>('excel')

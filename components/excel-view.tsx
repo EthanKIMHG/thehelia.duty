@@ -1,17 +1,28 @@
 'use client'
 
+import { AppConfirmDialog } from '@/components/app-confirm-dialog'
 import { Button } from '@/components/ui/button'
+import { useToast } from '@/hooks/use-toast'
 import { authFetch } from '@/lib/api'
 import { generateAutoSchedule } from '@/lib/auto-scheduler'
 import { calculateMonthlyStats, parseShift } from '@/lib/shift-utils'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { endOfWeek, format, isWithinInterval, startOfWeek } from 'date-fns'
+import { format } from 'date-fns'
 import { Download, Upload, UserPlus, Wand2 } from 'lucide-react'
 import Link from 'next/link'
 import { useMemo, useRef, useState, type ChangeEvent } from 'react'
-import { MobileCard } from './excel-view/mobile-card'
+import type { Staff, Stay } from '@/types'
+import { ExcelViewSkeleton } from './excel-view/excel-view-skeleton'
+import { MobileExcelView } from './excel-view/mobile/mobile-excel-view'
 import { ScheduleGrid } from './excel-view/schedule-grid'
 import { StaffingMeter } from './excel-view/staffing-meter'
+import type {
+  DailyWarningMap,
+  DateCell,
+  ScheduleApiEntry,
+  StaffScheduleViewModel,
+  WantedOffRecord,
+} from './excel-view/types'
 
 const SCHEDULE_DATE_COL_REGEX = /^\d{4}-\d{2}-\d{2}$/
 const CALENDAR_MONTH_LABEL_REGEX = /^\d+\s*월$/
@@ -43,6 +54,11 @@ type PendingStaffRow = {
 type ParsedCsvPayload = {
   rows: PendingStaffRow[]
   invalidCells: number
+}
+
+type DailyStats = {
+  total_newborns: number
+  total_mothers: number
 }
 
 const escapeCsvValue = (value: string) => {
@@ -278,129 +294,174 @@ const parseScheduleCsv = (rows: string[][], monthStr: string): ParsedCsvPayload 
 
 export function ExcelView() {
   const queryClient = useQueryClient()
-  const [currentDate, setCurrentDate] = useState(new Date())
+  const { toast } = useToast()
+  const [currentDate] = useState(new Date())
   const [isAutoAssigning, setIsAutoAssigning] = useState(false)
   const [isImportingCsv, setIsImportingCsv] = useState(false)
+  const [confirmAction, setConfirmAction] = useState<'csv-export' | 'csv-import' | 'auto-assign' | null>(null)
+  const [pendingImportFile, setPendingImportFile] = useState<File | null>(null)
   const csvInputRef = useRef<HTMLInputElement | null>(null)
 
+  const monthStr = useMemo(() => format(currentDate, 'yyyy-MM'), [currentDate])
+
   // Fetch Staff
-  const { data: staffData } = useQuery<any[]>({
+  const staffQuery = useQuery<Staff[]>({
     queryKey: ['staff'],
     queryFn: async () => {
       const res = await authFetch('/api/staff')
+      if (!res.ok) throw new Error('직원 데이터를 불러오지 못했습니다.')
       return res.json()
-    }
+    },
   })
 
   // Fetch Schedules
-  const monthStr = format(currentDate, 'yyyy-MM')
-  const { data: scheduleData, refetch: refetchSchedules } = useQuery<any[]>({
+  const scheduleQuery = useQuery<ScheduleApiEntry[]>({
     queryKey: ['schedules', monthStr],
     queryFn: async () => {
       const res = await authFetch(`/api/schedules?month=${monthStr}`)
+      if (!res.ok) throw new Error('스케줄 데이터를 불러오지 못했습니다.')
       return res.json()
-    }
+    },
+    placeholderData: (previousData) => previousData,
   })
 
   // Fetch Daily Stats (from Supabase view)
-  const { data: dailyStats } = useQuery<{ total_newborns: number; total_mothers: number }>({
+  const dailyStatsQuery = useQuery<DailyStats>({
     queryKey: ['daily-stats'],
     queryFn: async () => {
       const res = await authFetch('/api/daily-stats')
+      if (!res.ok) throw new Error('일간 통계를 불러오지 못했습니다.')
       return res.json()
-    }
+    },
   })
 
   // Fetch Stays for staffing warnings
-  const { data: staysData } = useQuery<any[]>({
+  const staysQuery = useQuery<Stay[]>({
     queryKey: ['stays', monthStr],
     queryFn: async () => {
       const res = await authFetch(`/api/stays?month=${monthStr}`)
+      if (!res.ok) throw new Error('입퇴실 데이터를 불러오지 못했습니다.')
       return res.json()
-    }
+    },
+    placeholderData: (previousData) => previousData,
   })
 
   // Fetch Wanted Offs
-  const { data: wantedOffsData } = useQuery<any[]>({
+  const wantedOffsQuery = useQuery<WantedOffRecord[]>({
     queryKey: ['wanted-offs', monthStr],
     queryFn: async () => {
       const res = await authFetch(`/api/wanted-offs?month=${monthStr}`)
+      if (!res.ok) throw new Error('희망 휴무 데이터를 불러오지 못했습니다.')
       return res.json()
-    }
+    },
+    placeholderData: (previousData) => previousData,
   })
+
+  const staffData = useMemo(() => staffQuery.data ?? [], [staffQuery.data])
+  const scheduleData = useMemo(() => scheduleQuery.data ?? [], [scheduleQuery.data])
+  const dailyStats = dailyStatsQuery.data
+  const staysData = useMemo(() => staysQuery.data ?? [], [staysQuery.data])
+  const wantedOffsData = useMemo(() => wantedOffsQuery.data ?? [], [wantedOffsQuery.data])
+  const refetchSchedules = scheduleQuery.refetch
+
+  const isBootstrapping =
+    staffQuery.isPending ||
+    scheduleQuery.isPending ||
+    dailyStatsQuery.isPending ||
+    staysQuery.isPending ||
+    wantedOffsQuery.isPending
+
+  const queryError =
+    staffQuery.error ||
+    scheduleQuery.error ||
+    dailyStatsQuery.error ||
+    staysQuery.error ||
+    wantedOffsQuery.error
 
   // Process wanted offs into a map for easy lookup: staffId -> Set<dateStr>
   const wantedOffStats = useMemo(() => {
     const map = new Map<string, Set<string>>()
-    if (wantedOffsData) {
-        wantedOffsData.forEach((w: any) => {
-            if (!map.has(w.staff_id)) {
-                map.set(w.staff_id, new Set())
-            }
-            map.get(w.staff_id)?.add(w.wanted_date)
-        })
-    }
+    wantedOffsData.forEach((wantedOff) => {
+      if (!map.has(wantedOff.staff_id)) {
+        map.set(wantedOff.staff_id, new Set())
+      }
+      map.get(wantedOff.staff_id)?.add(wantedOff.wanted_date)
+    })
     return map
   }, [wantedOffsData])
 
   // Generate dates for current month (only valid days)
-  const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate()
-  const dates = Array.from({ length: daysInMonth }, (_, i) => {
-    const d = new Date(currentDate.getFullYear(), currentDate.getMonth(), i + 1)
-    return {
-        date: d,
-        isValid: true,
-        dateStr: format(d, 'yyyy-MM-dd')
-    }
-  })
-
-  // Merge Staff and Schedules
-  const staffList = staffData?.map(staff => {
-    const staffSchedules = scheduleData?.filter(s => s.staff_id === staff.id) || []
-    
-    // Create a map for quick lookup
-    const scheduleMap = new Map(staffSchedules.map((s: any) => [s.work_date, s.duty_type]))
-
-    const fullSchedule = dates.map(dayObj => {
-      // If invalid date (e.g. Feb 30), return null or specific marker
-      if (!dayObj.isValid) return { date: '', type: 'INVALID' }
-      
+  const dates = useMemo<DateCell[]>(() => {
+    const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate()
+    return Array.from({ length: daysInMonth }, (_, i) => {
+      const d = new Date(currentDate.getFullYear(), currentDate.getMonth(), i + 1)
       return {
-        date: dayObj.dateStr,
-        type: scheduleMap.get(dayObj.dateStr) || '/'
+          date: d,
+          isValid: true,
+          dateStr: format(d, 'yyyy-MM-dd')
       }
     })
+  }, [currentDate])
 
-    const stats = calculateMonthlyStats(fullSchedule)
-
-    return {
-      id: staff.id,
-      name: staff.name,
-      role: staff.job_title === 'nurse' ? 'Nurse' : 'Assistant',
-      schedule: fullSchedule,
-      stats // Pass stats to grid
+  const scheduleLookupByStaff = useMemo(() => {
+    const map = new Map<string, Map<string, string>>()
+    for (const schedule of scheduleData) {
+      if (!map.has(schedule.staff_id)) {
+        map.set(schedule.staff_id, new Map<string, string>())
+      }
+      map.get(schedule.staff_id)?.set(schedule.work_date, schedule.duty_type)
     }
-  }) || []
+    return map
+  }, [scheduleData])
+
+  // Merge Staff and Schedules
+  const staffList = useMemo<StaffScheduleViewModel[]>(() => {
+    return staffData.map((staff) => {
+      const scheduleMap = scheduleLookupByStaff.get(staff.id) ?? new Map<string, string>()
+
+      const fullSchedule = dates.map((dayObj) => {
+        if (!dayObj.isValid) return { date: '', type: 'INVALID' }
+
+        return {
+          date: dayObj.dateStr,
+          type: scheduleMap.get(dayObj.dateStr) || '/'
+        }
+      })
+
+      return {
+        id: staff.id,
+        name: staff.name,
+        role: staff.job_title === 'nurse' ? 'Nurse' : 'Assistant',
+        employmentType: staff.employment_type,
+        schedule: fullSchedule,
+        scheduleByDate: new Map(fullSchedule.map((entry) => [entry.date, entry.type])),
+        stats: calculateMonthlyStats(fullSchedule)
+      }
+    })
+  }, [staffData, scheduleLookupByStaff, dates])
 
   // Stats Logic
-  const todayStr = format(new Date(), 'yyyy-MM-dd')
-  
-  const todaysWorkingStaff = staffList.filter((s: any) => {
-    const shift = s.schedule.find((sch: any) => sch.date === todayStr)?.type
-    return shift && shift !== '/'
-  })
-  
-  const totalNurses = todaysWorkingStaff.filter((s: any) => s.role === 'Nurse').length
-  const totalAssistants = todaysWorkingStaff.filter((s: any) => s.role === 'Assistant').length
+  const todayStr = useMemo(() => format(new Date(), 'yyyy-MM-dd'), [])
+  const { totalNurses, totalAssistants } = useMemo(() => {
+    const todaysWorkingStaff = staffList.filter((staff) => {
+      const shift = staff.scheduleByDate.get(todayStr)
+      return shift && shift !== '/'
+    })
+
+    return {
+      totalNurses: todaysWorkingStaff.filter((staff) => staff.role === 'Nurse').length,
+      totalAssistants: todaysWorkingStaff.filter((staff) => staff.role === 'Assistant').length
+    }
+  }, [staffList, todayStr])
   
   // Get total newborns from daily stats view
   const totalNewborns = dailyStats?.total_newborns || 0
 
   // Calculate daily newborn projections and staffing warnings
-  const dailyWarnings = useMemo(() => {
-    if (!staysData || !staffList.length) return new Map<string, { newborns: number; requiredPerShift: number; dAssigned: number; eAssigned: number; nAssigned: number; dDiff: number; eDiff: number; nDiff: number; checkins: number; checkouts: number }>()
+  const dailyWarnings = useMemo<DailyWarningMap>(() => {
+    if (!staffList.length) return new Map()
 
-    const warnings = new Map<string, { newborns: number; requiredPerShift: number; dAssigned: number; eAssigned: number; nAssigned: number; dDiff: number; eDiff: number; nDiff: number; checkins: number; checkouts: number }>()
+    const warnings: DailyWarningMap = new Map()
 
     dates.forEach(dayObj => {
       if (!dayObj.isValid) return
@@ -430,9 +491,8 @@ export function ExcelView() {
       // Count assigned per shift type
       // DE covers both D and E shifts
       let dCount = 0, eCount = 0, nCount = 0
-      staffList.forEach(staff => {
-        const entry = staff.schedule.find((s: any) => s.date === dayObj.dateStr)
-        const parsed = parseShift(entry?.type)
+      staffList.forEach((staff) => {
+        const parsed = parseShift(staff.scheduleByDate.get(dayObj.dateStr))
         
         if (parsed.type === 'D') {
             dCount++
@@ -473,20 +533,30 @@ export function ExcelView() {
 
   // Handlers
   const handleCellUpdate = async (staffId: string, dateStr: string, newType: string) => {
-    // Optimistic Update can be added here
-    
-    // API Call
-    await authFetch('/api/schedules', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        staff_id: staffId,
-        work_date: dateStr,
-        duty_type: newType
+    try {
+      const res = await authFetch('/api/schedules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          staff_id: staffId,
+          work_date: dateStr,
+          duty_type: newType
+        })
       })
-    })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body?.error || '근무 변경에 실패했습니다.')
+      }
 
-    refetchSchedules()
+      await refetchSchedules()
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: '근무 변경 실패',
+        description: error instanceof Error ? error.message : '근무 변경 중 오류가 발생했습니다.',
+        duration: 5000,
+      })
+    }
   }
 
   const handleStaffReorder = async (orderedIds: string[]) => {
@@ -504,32 +574,17 @@ export function ExcelView() {
     await queryClient.invalidateQueries({ queryKey: ['staff'] })
   }
 
-  const handleAutoAssign = async () => {
-    if (!staffData?.length) {
-      alert('직원 데이터가 없어 자동배치를 진행할 수 없습니다.')
-      return
-    }
-
-    if (!staysData) {
-      alert('신생아/입퇴실 데이터를 불러온 뒤 다시 시도해주세요.')
-      return
-    }
-
-    const shouldProceed = window.confirm(
-      '현재 이미 입력된 근무는 유지하고, 비어 있는 일정만 자동 배치합니다.\n계속할까요?'
-    )
-    if (!shouldProceed) return
-
+  const executeAutoAssign = async () => {
     setIsAutoAssigning(true)
     try {
       const result = generateAutoSchedule({
-        staffData: staffData.map((staff: any) => ({
+        staffData: staffData.map((staff) => ({
           id: staff.id,
           name: staff.name,
           employment_type: staff.employment_type === 'part-time' ? 'part-time' : 'full-time'
         })),
-        scheduleData: scheduleData || [],
-        staysData: staysData || [],
+        scheduleData,
+        staysData,
         wantedOffStats,
         dates: dates.filter((d) => d.isValid).map((d) => d.dateStr)
       })
@@ -554,30 +609,49 @@ export function ExcelView() {
 
       const unmetCount = result.unmetCoverage.length
       const generatedCount = result.entries.length
-      const generatedMessage = generatedCount > 0
-        ? `\n새로 반영된 일정 ${generatedCount}건`
-        : '\n추가로 배치할 빈 일정이 없어 기존 근무표를 유지했습니다.'
-      const coverageMessage = unmetCount > 0
-        ? `\n주의: 인력 미충족 일자 ${unmetCount}일`
-        : '\n모든 일자 D/E/N 요구 인원을 충족했습니다.'
+      const generatedMessage =
+        generatedCount > 0
+          ? `새로 반영된 일정 ${generatedCount}건`
+          : '추가로 배치할 빈 일정이 없어 기존 근무표를 유지했습니다.'
+      const coverageMessage =
+        unmetCount > 0
+          ? `인력 미충족 일자 ${unmetCount}일이 남아 있습니다.`
+          : '모든 일자 D/E/N 요구 인원을 충족했습니다.'
 
-      alert(`자동배치가 완료되었습니다.${generatedMessage}${coverageMessage}`)
+      toast({
+        title: '자동 배치 완료',
+        description: `${generatedMessage} · ${coverageMessage}`,
+        duration: 3000,
+      })
     } catch (error) {
-      alert(error instanceof Error ? error.message : '자동배치 중 오류가 발생했습니다.')
+      toast({
+        variant: 'destructive',
+        title: '자동 배치 실패',
+        description: error instanceof Error ? error.message : '자동배치 중 오류가 발생했습니다.',
+        duration: 5000,
+      })
     } finally {
       setIsAutoAssigning(false)
     }
   }
 
-  const handleCsvExport = () => {
-    if (!staffData?.length || !dates.length) {
-      alert('내보낼 데이터가 없습니다.')
+  const handleAutoAssignClick = () => {
+    if (!staffData.length) {
+      toast({
+        variant: 'destructive',
+        title: '자동 배치 불가',
+        description: '직원 데이터가 없어 자동배치를 실행할 수 없습니다.',
+        duration: 5000,
+      })
       return
     }
+    setConfirmAction('auto-assign')
+  }
 
+  const executeCsvExport = () => {
     const dateCols = dates.filter((d) => d.isValid).map((d) => d.dateStr)
     const header = ['staff_id', 'staff_name', 'employment_type', 'role', ...dateCols]
-    const staffMap = new Map((staffData || []).map((staff: any) => [staff.id, staff]))
+    const staffMap = new Map(staffData.map((staff) => [staff.id, staff]))
 
     const lines = [
       header.map((value) => escapeCsvValue(value)).join(',')
@@ -585,7 +659,7 @@ export function ExcelView() {
 
     for (const staff of staffList) {
       const rawStaff = staffMap.get(staff.id)
-      const scheduleMap = new Map((staff.schedule || []).map((entry: any) => [entry.date, entry.type || '/']))
+      const scheduleMap = new Map(staff.schedule.map((entry) => [entry.date, entry.type || '/']))
       const row = [
         staff.id,
         staff.name || '',
@@ -607,16 +681,32 @@ export function ExcelView() {
     link.click()
     link.remove()
     window.URL.revokeObjectURL(url)
+
+    toast({
+      title: 'CSV 내보내기 완료',
+      description: `${monthStr} 근무표를 다운로드했습니다.`,
+      duration: 2500,
+    })
+  }
+
+  const handleCsvExportClick = () => {
+    if (!staffData.length || !dates.length) {
+      toast({
+        variant: 'destructive',
+        title: 'CSV 내보내기 불가',
+        description: '내보낼 근무 데이터가 없습니다.',
+        duration: 5000,
+      })
+      return
+    }
+    setConfirmAction('csv-export')
   }
 
   const handleCsvImportClick = () => {
     csvInputRef.current?.click()
   }
 
-  const handleCsvImport = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) return
-
+  const executeCsvImport = async (file: File) => {
     setIsImportingCsv(true)
     try {
       const text = await file.text()
@@ -626,8 +716,10 @@ export function ExcelView() {
       }
 
       const parsedCsv = parseScheduleCsv(rows, monthStr)
-      const staffById = new Map((staffData || []).map((staff: any) => [String(staff.id), staff]))
-      const staffByName = new Map((staffData || []).map((staff: any) => [normalizeCsvName(String(staff.name)), staff]))
+      const staffById = new Map<string, Staff>(staffData.map((staff) => [String(staff.id), staff]))
+      const staffByName = new Map<string, Staff>(
+        staffData.map((staff) => [normalizeCsvName(String(staff.name)), staff]),
+      )
 
       const namesToCreate = new Set<string>()
       parsedCsv.rows.forEach((row) => {
@@ -654,7 +746,7 @@ export function ExcelView() {
         })
 
         if (res.ok) {
-          const created = await res.json()
+          const created = (await res.json()) as Staff
           staffById.set(String(created.id), created)
           staffByName.set(normalizeCsvName(String(created.name)), created)
           createdStaffCount += 1
@@ -667,11 +759,12 @@ export function ExcelView() {
       if (failedToCreate.length > 0) {
         const refreshRes = await authFetch('/api/staff')
         if (refreshRes.ok) {
-          const latestStaff = await refreshRes.json()
+          const latestStaff = (await refreshRes.json()) as unknown
           const latestStaffList = Array.isArray(latestStaff) ? latestStaff : []
-          latestStaffList.forEach((staff: any) => {
-            staffById.set(String(staff.id), staff)
-            staffByName.set(normalizeCsvName(String(staff.name)), staff)
+          latestStaffList.forEach((staff) => {
+            const typedStaff = staff as Staff
+            staffById.set(String(typedStaff.id), typedStaff)
+            staffByName.set(normalizeCsvName(String(typedStaff.name)), typedStaff)
           })
         }
       }
@@ -728,13 +821,74 @@ export function ExcelView() {
       if (unresolvedRows > 0) messages.push(`직원 미매칭 행 ${unresolvedRows}건 건너뜀`)
       if (parsedCsv.invalidCells > 0) messages.push(`유효하지 않은 근무값 ${parsedCsv.invalidCells}건 건너뜀`)
       if (failedToCreate.length > 0) messages.push(`자동 등록 실패 ${failedToCreate.length}명`)
-      alert(messages.join('\n'))
+
+      toast({
+        title: 'CSV 가져오기 완료',
+        description: messages.join(' · '),
+        duration: 3000,
+      })
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'CSV 가져오기 중 오류가 발생했습니다.')
+      toast({
+        variant: 'destructive',
+        title: 'CSV 가져오기 실패',
+        description: error instanceof Error ? error.message : 'CSV 가져오기 중 오류가 발생했습니다.',
+        duration: 5000,
+      })
     } finally {
       setIsImportingCsv(false)
-      event.target.value = ''
+      if (csvInputRef.current) {
+        csvInputRef.current.value = ''
+      }
+      setPendingImportFile(null)
     }
+  }
+
+  const handleCsvImportFileSelect = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    setPendingImportFile(file)
+    setConfirmAction('csv-import')
+  }
+
+  const handleConfirmAction = () => {
+    if (confirmAction === 'csv-export') {
+      setConfirmAction(null)
+      executeCsvExport()
+      return
+    }
+
+    if (confirmAction === 'auto-assign') {
+      setConfirmAction(null)
+      void executeAutoAssign()
+      return
+    }
+
+    if (confirmAction === 'csv-import') {
+      if (!pendingImportFile) {
+        setConfirmAction(null)
+        return
+      }
+      setConfirmAction(null)
+      void executeCsvImport(pendingImportFile)
+    }
+  }
+
+  const handleCloseConfirmDialog = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      if (confirmAction === 'csv-import' && csvInputRef.current) {
+        csvInputRef.current.value = ''
+        setPendingImportFile(null)
+      }
+      setConfirmAction(null)
+    }
+  }
+
+  if (isBootstrapping) return <ExcelViewSkeleton />
+
+  if (queryError) {
+    const message = queryError instanceof Error ? queryError.message : '데이터를 불러오지 못했습니다.'
+    return <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">{message}</div>
   }
 
   return (
@@ -747,24 +901,32 @@ export function ExcelView() {
       />
 
       {/* Toolbar */}
-      <div className="flex justify-between items-center">
-         <div className="text-lg font-bold">
-            {format(currentDate, 'yyyy년 M월')}
-         </div>
-        <div className="flex gap-2">
-            <Button onClick={handleCsvExport} variant="outline" className="gap-2">
-                <Upload className="h-4 w-4" />
-                CSV 내보내기
-            </Button>
-            <Button onClick={handleCsvImportClick} variant="outline" className="gap-2" disabled={isImportingCsv}>
-                
-                <Download className="h-4 w-4" />
-                {isImportingCsv ? 'CSV 가져오는 중...' : 'CSV 가져오기'}
-            </Button>
-            <Button onClick={handleAutoAssign} variant="outline" className="gap-2" disabled={isAutoAssigning}>
-                <Wand2 className="h-4 w-4" />
-                {isAutoAssigning ? '자동 배치 중...' : 'AI 자동 배치'}
-            </Button>
+      <div className="flex min-w-0 flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div className="shrink-0 text-lg font-bold">{format(currentDate, 'yyyy년 M월')}</div>
+        <div className="grid min-w-0 w-full grid-cols-1 gap-2 sm:grid-cols-3 md:flex md:w-auto">
+          <Button onClick={handleCsvExportClick} variant="outline" className="h-11 w-full gap-2 md:h-9 md:w-auto">
+            <Upload className="h-4 w-4 shrink-0" />
+            CSV 내보내기
+          </Button>
+          <Button
+            onClick={handleCsvImportClick}
+            variant="outline"
+            className="h-11 w-full gap-2 md:h-9 md:w-auto"
+            disabled={isImportingCsv}
+          >
+            <Download className="h-4 w-4 shrink-0" />
+            {isImportingCsv ? '가져오는 중...' : 'CSV 가져오기'}
+          </Button>
+          <Button
+            onClick={handleAutoAssignClick}
+            variant="outline"
+            className="h-11 w-full gap-2 md:h-9 md:w-auto"
+            disabled={isAutoAssigning}
+          >
+            <Wand2 className="h-4 w-4 shrink-0" />
+            <span className="md:hidden">{isAutoAssigning ? '배치 중...' : '자동 배치'}</span>
+            <span className="hidden md:inline">{isAutoAssigning ? '자동 배치 중...' : 'AI 자동 배치'}</span>
+          </Button>
         </div>
       </div>
 
@@ -773,7 +935,39 @@ export function ExcelView() {
         type="file"
         accept=".csv,text/csv"
         className="hidden"
-        onChange={handleCsvImport}
+        onChange={handleCsvImportFileSelect}
+      />
+
+      <AppConfirmDialog
+        open={confirmAction !== null}
+        title={
+          confirmAction === 'csv-export'
+            ? 'CSV 파일을 내보내시겠습니까?'
+            : confirmAction === 'auto-assign'
+              ? 'AI 자동 배치를 실행할까요?'
+              : 'CSV 가져오기를 적용할까요?'
+        }
+        description={
+          confirmAction === 'csv-export'
+            ? '현재 월 근무표를 CSV로 다운로드합니다.'
+            : confirmAction === 'auto-assign'
+              ? '이미 입력된 근무는 유지하고 비어 있는 일정만 채웁니다.'
+              : `선택한 파일(${pendingImportFile?.name || 'CSV'})의 근무표를 일괄 반영합니다.`
+        }
+        confirmLabel={
+          confirmAction === 'csv-export'
+            ? '내보내기'
+            : confirmAction === 'auto-assign'
+              ? '자동 배치 실행'
+              : '가져오기 적용'
+        }
+        confirmDisabled={
+          isImportingCsv ||
+          isAutoAssigning ||
+          (confirmAction === 'csv-import' && !pendingImportFile)
+        }
+        onOpenChange={handleCloseConfirmDialog}
+        onConfirm={handleConfirmAction}
       />
 
       {/* 2. Desktop Grid */}
@@ -790,23 +984,7 @@ export function ExcelView() {
 
       {/* 3. Mobile Card View */}
       <div className="md:hidden space-y-8">
-        {dates.filter(d => {
-             // Show "Current Week" (Mon-Sun) based on currentDate
-             // If currentDate is "Today", it shows today's week.
-             // If user navigates months, it shows the week containing the 1st (default) or current day?
-             // User requested "Today" context specifically.
-             // Let's use the week containing `currentDate`.
-             const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 })
-             const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 })
-             return d.isValid && isWithinInterval(d.date, { start: weekStart, end: weekEnd })
-        }).map(dayObj => (
-            <MobileCard 
-                key={dayObj.dateStr} 
-                date={dayObj.date}
-                schedules={staffList}
-                dailyWarnings={dailyWarnings}
-            />
-        ))}
+        <MobileExcelView staffData={staffData} />
         <Button asChild variant="outline" className="w-full h-12 dashed border-2">
             <Link href="/staff/register">
                 <UserPlus className="mr-2 h-4 w-4" />

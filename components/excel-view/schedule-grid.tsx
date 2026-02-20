@@ -10,8 +10,10 @@ import { cn } from "@/lib/utils"
 import { format } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { GripVertical } from "lucide-react"
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { WantedOffSheet } from "./wanted-off-dialog"
+import { useToast } from '@/hooks/use-toast'
+import type { DailyWarningMap, DateCell, StaffScheduleViewModel } from "./types"
 
 import {
     Popover,
@@ -19,34 +21,37 @@ import {
     PopoverTrigger,
 } from "@/components/ui/popover"
 
-interface DateObj {
-    date: Date
-    isValid: boolean
-    dateStr: string
-}
-
-interface DailyWarning {
-  newborns: number
-  requiredPerShift: number
-  dAssigned: number
-  eAssigned: number
-  nAssigned: number
-  dDiff: number
-  eDiff: number
-  nDiff: number
-  checkins: number
-  checkouts: number
-}
-
-
 interface ScheduleGridProps {
-  dates: DateObj[]
-  staffMembers: any[]
+  dates: DateCell[]
+  staffMembers: StaffScheduleViewModel[]
   onCellClick: (staffId: string, dateStr: string, newType: string) => void
-  dailyWarnings?: Map<string, DailyWarning>
+  dailyWarnings?: DailyWarningMap
   wantedOffStats?: Map<string, Set<string>>
   onReorderStaffMembers?: (orderedIds: string[]) => Promise<void> | void
 }
+
+type SummaryShiftKey = 'D' | 'E' | 'N' | 'M' | 'DE' | '/' | 'A'
+type SummaryCountRecord = Record<SummaryShiftKey, number>
+
+const SUMMARY_SHIFT_TYPES: Array<{ key: SummaryShiftKey; label: string; color: string }> = [
+  { key: 'D', label: 'D', color: 'bg-yellow-400 text-white' },
+  { key: 'E', label: 'E', color: 'bg-green-500 text-white' },
+  { key: 'N', label: 'N', color: 'bg-blue-500 text-white' },
+  { key: 'M', label: 'M', color: 'bg-purple-500 text-white' },
+  { key: 'DE', label: 'DE', color: 'bg-indigo-500 text-white' },
+  { key: '/', label: '/', color: 'bg-gray-400 text-white' },
+  { key: 'A', label: 'A', color: 'bg-rose-500 text-white' },
+]
+
+const createSummaryCountRecord = (): SummaryCountRecord => ({
+  D: 0,
+  E: 0,
+  N: 0,
+  M: 0,
+  DE: 0,
+  '/': 0,
+  A: 0,
+})
 
 export function ScheduleGrid({
   dates,
@@ -56,10 +61,11 @@ export function ScheduleGrid({
   wantedOffStats,
   onReorderStaffMembers
 }: ScheduleGridProps) {
+  const { toast } = useToast()
   const [hoveredRow, setHoveredRow] = useState<string | null>(null)
-  const [selectedStaffForOff, setSelectedStaffForOff] = useState<any>(null)
+  const [selectedStaffForOff, setSelectedStaffForOff] = useState<StaffScheduleViewModel | null>(null)
   const [isOffDialogOpen, setIsOffDialogOpen] = useState(false)
-  const [orderedStaffMembers, setOrderedStaffMembers] = useState<any[]>(staffMembers)
+  const [orderedStaffMembers, setOrderedStaffMembers] = useState<StaffScheduleViewModel[]>(staffMembers)
   const [draggingStaffId, setDraggingStaffId] = useState<string | null>(null)
   const [dragOverStaffId, setDragOverStaffId] = useState<string | null>(null)
   const [dragHandleStaffId, setDragHandleStaffId] = useState<string | null>(null)
@@ -69,7 +75,50 @@ export function ScheduleGrid({
     setOrderedStaffMembers(staffMembers)
   }, [staffMembers])
 
-  const handleStaffClick = (staff: any) => {
+  const staffScheduleById = useMemo(() => {
+    const lookup = new Map<string, Map<string, string>>()
+    orderedStaffMembers.forEach((staff) => {
+      if (staff.scheduleByDate instanceof Map) {
+        lookup.set(staff.id, staff.scheduleByDate)
+        return
+      }
+      lookup.set(
+        staff.id,
+        new Map(staff.schedule.map((entry) => [entry.date, entry.type]))
+      )
+    })
+    return lookup
+  }, [orderedStaffMembers])
+
+  const summaryCountsByDate = useMemo(() => {
+    const summary = new Map<string, SummaryCountRecord>()
+    dates.forEach((dateObj) => {
+      if (dateObj.isValid) {
+        summary.set(dateObj.dateStr, createSummaryCountRecord())
+      }
+    })
+
+    orderedStaffMembers.forEach((staff) => {
+      const scheduleByDate = staffScheduleById.get(staff.id)
+      if (!scheduleByDate) return
+
+      dates.forEach((dateObj) => {
+        if (!dateObj.isValid) return
+        const dailySummary = summary.get(dateObj.dateStr)
+        if (!dailySummary) return
+
+        const parsed = parseShift(scheduleByDate.get(dateObj.dateStr))
+        dailySummary[parsed.type] += 1
+        if (parsed.type !== '/') {
+          dailySummary.A += 1
+        }
+      })
+    })
+
+    return summary
+  }, [dates, orderedStaffMembers, staffScheduleById])
+
+  const handleStaffClick = (staff: StaffScheduleViewModel) => {
     setSelectedStaffForOff(staff)
     setIsOffDialogOpen(true)
   }
@@ -96,7 +145,12 @@ export function ScheduleGrid({
       await onReorderStaffMembers?.(next.map((staff) => staff.id))
     } catch (error) {
       console.error('Failed to persist staff order:', error)
-      alert('직원 순서 저장에 실패했습니다. 다시 시도해주세요.')
+      toast({
+        variant: 'destructive',
+        title: '직원 순서 저장 실패',
+        description: '잠시 후 다시 시도해주세요.',
+        duration: 5000,
+      })
       setOrderedStaffMembers(staffMembers)
     }
   }
@@ -301,8 +355,7 @@ export function ScheduleGrid({
                     return <TableCell key={i} className="p-0 border-l bg-muted/20" />
                 }
 
-                const shiftEntry = staff.schedule.find((s: any) => s.date === dateObj.dateStr)
-                const shift = shiftEntry?.type || '/' 
+                const shift = staffScheduleById.get(staff.id)?.get(dateObj.dateStr) || '/'
                 
                 const isTodayCol = dateObj.dateStr === todayStr
                 const isWantedOff = wantedOffStats?.get(staff.id)?.has(dateObj.dateStr)
@@ -459,18 +512,7 @@ export function ScheduleGrid({
           <TableRow className="border-t-2 border-primary/30">
             <TableCell colSpan={dates.length + 4} className="p-0 h-3 bg-muted/20" />
           </TableRow>
-          {(() => {
-            const shiftTypes = [
-              { key: 'D', label: 'D', color: 'bg-yellow-400 text-white' },
-              { key: 'E', label: 'E', color: 'bg-green-500 text-white' },
-              { key: 'N', label: 'N', color: 'bg-blue-500 text-white' },
-              { key: 'M', label: 'M', color: 'bg-purple-500 text-white' },
-              { key: 'DE', label: 'DE', color: 'bg-indigo-500 text-white' },
-              { key: '/', label: '/', color: 'bg-gray-400 text-white' },
-              { key: 'A', label: 'A', color: 'bg-rose-500 text-white' },
-            ]
-
-            return shiftTypes.map(({ key, label, color }) => (
+          {SUMMARY_SHIFT_TYPES.map(({ key, label, color }) => (
               <TableRow key={key} className="hover:bg-muted/30">
                 <TableCell className="min-w-[220px] w-[220px] sticky left-0 bg-background z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                   <div className="flex items-center justify-center">
@@ -487,22 +529,7 @@ export function ScheduleGrid({
                     return <TableCell key={i} className="p-0 border-l bg-muted/20" />
                   }
 
-                  let count = 0
-                  if (key === 'A') {
-                    // Total: count all non-off shifts
-                    count = orderedStaffMembers.reduce((acc, staff) => {
-                      const entry = staff.schedule.find((s: any) => s.date === dateObj.dateStr)
-                      const parsed = parseShift(entry?.type)
-                      return acc + (parsed.type !== '/' ? 1 : 0)
-                    }, 0)
-                  } else {
-                    // Count specific shift type
-                    count = orderedStaffMembers.reduce((acc, staff) => {
-                      const entry = staff.schedule.find((s: any) => s.date === dateObj.dateStr)
-                      const parsed = parseShift(entry?.type)
-                      return acc + (parsed.type === key ? 1 : 0)
-                    }, 0)
-                  }
+                  const count = summaryCountsByDate.get(dateObj.dateStr)?.[key] ?? 0
 
                   const isTodayCol = dateObj.dateStr === todayStr
                   return (
@@ -523,8 +550,7 @@ export function ScheduleGrid({
                 <TableCell className="border-l" />
                 <TableCell className="border-l" />
               </TableRow>
-            ))
-          })()}
+            ))}
         </TableBody>
       </Table>
       

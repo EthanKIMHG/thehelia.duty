@@ -34,6 +34,22 @@ type StayPayload = {
   status?: StayStatus
 }
 
+type StayEditableSnapshot = {
+  room_number: string | null
+  mother_name: string | null
+  baby_count: number | null
+  baby_names: string[] | null
+  baby_profiles: BabyProfilePayload[] | null
+  check_in_date: string | null
+  check_out_date: string | null
+  edu_date: string | null
+  notes: string | null
+  gender: string | null
+  baby_weight: number | null
+  birth_hospital: string | null
+  status: StayStatus | null
+}
+
 type StaySyncCandidate = {
   id: string
   room_number: string
@@ -200,7 +216,9 @@ export async function PUT(request: Request) {
 
     const { data: existingStay, error: existingError } = await supabaseAdmin
       .from('stays')
-      .select('id, room_number, status')
+      .select(
+        'id, room_number, mother_name, baby_count, baby_names, baby_profiles, check_in_date, check_out_date, edu_date, notes, gender, baby_weight, birth_hospital, status'
+      )
       .eq('id', id)
       .single();
 
@@ -208,7 +226,25 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: existingError.message }, { status: 500 });
     }
 
-    const normalizedPayload = normalizeStayPayload(updateData as StayPayload);
+    const existingSnapshot = existingStay as unknown as StayEditableSnapshot
+    const mergedPayload: StayPayload = {
+      room_number: existingSnapshot.room_number ?? undefined,
+      mother_name: existingSnapshot.mother_name ?? undefined,
+      baby_count: existingSnapshot.baby_count ?? undefined,
+      baby_names: existingSnapshot.baby_names ?? undefined,
+      baby_profiles: existingSnapshot.baby_profiles ?? undefined,
+      check_in_date: existingSnapshot.check_in_date ?? undefined,
+      check_out_date: existingSnapshot.check_out_date ?? undefined,
+      edu_date: existingSnapshot.edu_date ?? undefined,
+      notes: existingSnapshot.notes ?? undefined,
+      gender: existingSnapshot.gender ?? undefined,
+      baby_weight: existingSnapshot.baby_weight ?? undefined,
+      birth_hospital: existingSnapshot.birth_hospital ?? undefined,
+      status: existingSnapshot.status ?? undefined,
+      ...updateData,
+    }
+
+    const normalizedPayload = normalizeStayPayload(mergedPayload);
 
     // Use admin client for write
     const { data, error } = await supabaseAdmin

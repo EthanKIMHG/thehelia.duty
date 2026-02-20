@@ -1,5 +1,6 @@
 'use client'
 
+import { AppConfirmDialog } from '@/components/app-confirm-dialog'
 import { StayFormDrawer } from '@/components/stay-form-drawer'
 import { StayHistoryView } from '@/components/stay-history-view'
 import { Badge } from '@/components/ui/badge'
@@ -14,12 +15,13 @@ import {
 } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useToast } from '@/hooks/use-toast'
 import { authFetch } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { addDays, differenceInDays, format, parseISO } from 'date-fns'
 import { Baby, BedDouble, CalendarRange, Eye, EyeOff, GripVertical, LogIn, LogOut, RefreshCw, Users } from 'lucide-react'
-import { useMemo, useState, type DragEvent } from 'react'
+import { useEffect, useMemo, useState, type DragEvent } from 'react'
 
 interface Stay {
   id: string
@@ -107,6 +109,14 @@ interface DashboardStaysResponse {
   }
 }
 
+interface PendingRoomTransfer {
+  sourceRoomNumber: string
+  targetRoomNumber: string
+  sourceMotherName: string
+  targetMotherName: string
+  isSwap: boolean
+}
+
 type StatCardType =
   | 'todayCheckIn'
   | 'todayCheckOut'
@@ -114,6 +124,8 @@ type StatCardType =
   | 'mothers'
   | 'tomorrowCheckIn'
   | 'tomorrowCheckOut'
+
+const FINE_POINTER_MEDIA_QUERY = '(any-pointer: fine) and (any-hover: hover)'
 
 const dedupeByStayId = (stays: Stay[]) => {
   const seen = new Set<string>()
@@ -240,6 +252,7 @@ const getDateStringInTimeZone = (timeZone: string, baseDate = new Date()) => {
 
 export function RoomView() {
   const queryClient = useQueryClient()
+  const { toast } = useToast()
   const [tab, setTab] = useState<'overview' | 'history'>('overview')
   const [filter, setFilter] = useState<'All' | 'Prestige' | 'VIP' | 'VVIP' | 'CheckOut'>('All')
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -249,11 +262,33 @@ export function RoomView() {
   const [showTodayNotice, setShowTodayNotice] = useState(true)
   const [draggingRoomNumber, setDraggingRoomNumber] = useState<string | null>(null)
   const [dragOverRoomNumber, setDragOverRoomNumber] = useState<string | null>(null)
+  const [isFinePointerDevice, setIsFinePointerDevice] = useState<boolean | null>(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return null
+    return window.matchMedia(FINE_POINTER_MEDIA_QUERY).matches
+  })
+  const [pendingRoomTransfer, setPendingRoomTransfer] = useState<PendingRoomTransfer | null>(null)
+  const [isTransferConfirmOpen, setIsTransferConfirmOpen] = useState(false)
   const [syncFeedback, setSyncFeedback] = useState<{
     type: 'success' | 'error'
     message: string
   } | null>(null)
   const [syncResult, setSyncResult] = useState<SyncStatusResponse | null>(null)
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+
+    const mediaQuery = window.matchMedia(FINE_POINTER_MEDIA_QUERY)
+    const update = () => setIsFinePointerDevice(mediaQuery.matches)
+    update()
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', update)
+      return () => mediaQuery.removeEventListener('change', update)
+    }
+
+    mediaQuery.addListener(update)
+    return () => mediaQuery.removeListener(update)
+  }, [])
 
   const { data: roomsFromAPI, isLoading } = useQuery<RoomFromAPI[]>({
     queryKey: ['rooms'],
@@ -285,7 +320,7 @@ export function RoomView() {
 
   const todayStr = useMemo(() => getDateStringInTimeZone('Asia/Seoul'), [])
   const tomorrowStr = useMemo(() => format(addDays(parseISO(todayStr), 1), 'yyyy-MM-dd'), [todayStr])
-  const kstLabel = todayStr.replaceAll('-', '.')
+  const kstLabel = todayStr.replace(/-/g, '.')
   const todayBase = parseISO(todayStr)
 
   const rooms: Room[] = (roomsFromAPI || []).map((room) => {
@@ -484,19 +519,29 @@ export function RoomView() {
       const summary = result.isSwap
         ? `${result.sourceRoomNumber}호 ${result.sourceMotherName} ↔ ${result.targetRoomNumber}호 ${result.targetMotherName}`
         : `${result.sourceRoomNumber}호 ${result.sourceMotherName} → ${result.targetRoomNumber}호`
-      alert(`객실 변경 완료\n${summary}`)
+      toast({
+        title: '객실 변경 완료',
+        description: summary,
+        duration: 3000,
+      })
     },
     onError: (error) => {
-      alert(error instanceof Error ? error.message : '객실 변경 중 오류가 발생했습니다.')
+      toast({
+        variant: 'destructive',
+        title: '객실 변경 실패',
+        description: error instanceof Error ? error.message : '객실 변경 중 오류가 발생했습니다.',
+        duration: 5000,
+      })
     },
     onSettled: () => {
       setDraggingRoomNumber(null)
       setDragOverRoomNumber(null)
+      setPendingRoomTransfer(null)
     }
   })
 
   const handleRoomDragStart = (room: Room, event: DragEvent<HTMLDivElement>) => {
-    if (roomTransferMutation.isPending || !room.activeStayId) {
+    if (isFinePointerDevice !== true || roomTransferMutation.isPending || !room.activeStayId) {
       event.preventDefault()
       return
     }
@@ -508,27 +553,52 @@ export function RoomView() {
   }
 
   const handleRoomDragOver = (targetRoomNumber: string, event: DragEvent<HTMLDivElement>) => {
-    if (!draggingRoomNumber || draggingRoomNumber === targetRoomNumber) return
+    if (isFinePointerDevice !== true || !draggingRoomNumber || draggingRoomNumber === targetRoomNumber) return
     event.preventDefault()
     event.dataTransfer.dropEffect = 'move'
     setDragOverRoomNumber(targetRoomNumber)
   }
 
   const handleRoomDrop = (targetRoomNumber: string, event: DragEvent<HTMLDivElement>) => {
+    if (isFinePointerDevice !== true) return
     event.preventDefault()
     const sourceRoomNumber = draggingRoomNumber || event.dataTransfer.getData('text/plain')
     if (!sourceRoomNumber || sourceRoomNumber === targetRoomNumber) {
       setDragOverRoomNumber(null)
       return
     }
+    const sourceRoom = rooms.find((room) => room.number === sourceRoomNumber)
+    const targetRoom = rooms.find((room) => room.number === targetRoomNumber)
+    if (!sourceRoom?.activeStayId) {
+      setDragOverRoomNumber(null)
+      return
+    }
 
-    roomTransferMutation.mutate({ sourceRoomNumber, targetRoomNumber })
+    setPendingRoomTransfer({
+      sourceRoomNumber,
+      targetRoomNumber,
+      sourceMotherName: sourceRoom.motherName || '산모',
+      targetMotherName: targetRoom?.motherName || '산모',
+      isSwap: Boolean(targetRoom?.activeStayId),
+    })
+    setIsTransferConfirmOpen(true)
+    setDraggingRoomNumber(null)
+    setDragOverRoomNumber(null)
   }
 
   const handleRoomDragEnd = () => {
     if (roomTransferMutation.isPending) return
     setDraggingRoomNumber(null)
     setDragOverRoomNumber(null)
+  }
+
+  const handleConfirmRoomTransfer = () => {
+    if (!pendingRoomTransfer) return
+    setIsTransferConfirmOpen(false)
+    roomTransferMutation.mutate({
+      sourceRoomNumber: pendingRoomTransfer.sourceRoomNumber,
+      targetRoomNumber: pendingRoomTransfer.targetRoomNumber,
+    })
   }
 
   const statDialogData = useMemo(() => {
@@ -817,12 +887,18 @@ export function RoomView() {
                 </Button>
               ))}
             </div>
+            {isFinePointerDevice === false && (
+              <p className="text-xs text-muted-foreground">
+                모바일 Safari/Chrome에서는 객실 드래그 이동이 제한됩니다.
+              </p>
+            )}
 
             {rooms5F.length > 0 && (
               <RoomFloorSection
                 title="Prestige & VIP"
                 floorLabel="5F"
                 rooms={rooms5F}
+                allowDrag={isFinePointerDevice === true}
                 onRoomClick={handleRoomClick}
                 draggingRoomNumber={draggingRoomNumber}
                 dragOverRoomNumber={dragOverRoomNumber}
@@ -839,6 +915,7 @@ export function RoomView() {
                 title="VIP & VVIP"
                 floorLabel="6F"
                 rooms={rooms6F}
+                allowDrag={isFinePointerDevice === true}
                 onRoomClick={handleRoomClick}
                 draggingRoomNumber={draggingRoomNumber}
                 dragOverRoomNumber={dragOverRoomNumber}
@@ -851,6 +928,29 @@ export function RoomView() {
             )}
           </>
         )}
+
+        <AppConfirmDialog
+          open={isTransferConfirmOpen && Boolean(pendingRoomTransfer)}
+          title={pendingRoomTransfer?.isSwap ? '객실 스왑을 실행하시겠습니까?' : '객실 이동을 실행하시겠습니까?'}
+          description={
+            pendingRoomTransfer
+              ? pendingRoomTransfer.isSwap
+                ? `${pendingRoomTransfer.sourceRoomNumber}호(${pendingRoomTransfer.sourceMotherName})와 ${pendingRoomTransfer.targetRoomNumber}호(${pendingRoomTransfer.targetMotherName})의 입실 정보를 맞교환합니다.`
+                : `${pendingRoomTransfer.sourceRoomNumber}호(${pendingRoomTransfer.sourceMotherName})를 ${pendingRoomTransfer.targetRoomNumber}호로 이동합니다.`
+              : '선택한 객실 변경 작업을 적용합니다.'
+          }
+          confirmLabel={pendingRoomTransfer?.isSwap ? '스왑 실행' : '이동 실행'}
+          confirmDisabled={roomTransferMutation.isPending}
+          onOpenChange={(open) => {
+            setIsTransferConfirmOpen(open)
+            if (!open) setPendingRoomTransfer(null)
+          }}
+          onCancel={() => {
+            setPendingRoomTransfer(null)
+            setDragOverRoomNumber(null)
+          }}
+          onConfirm={handleConfirmRoomTransfer}
+        />
 
         {selectedRoom && (
           <StayFormDrawer
@@ -1017,6 +1117,7 @@ function RoomFloorSection({
   title,
   floorLabel,
   rooms,
+  allowDrag,
   onRoomClick,
   draggingRoomNumber,
   dragOverRoomNumber,
@@ -1029,6 +1130,7 @@ function RoomFloorSection({
   title: string
   floorLabel: string
   rooms: Room[]
+  allowDrag: boolean
   onRoomClick: (roomNumber: string) => void
   draggingRoomNumber: string | null
   dragOverRoomNumber: string | null
@@ -1050,7 +1152,7 @@ function RoomFloorSection({
             key={room.id}
             room={room}
             onClick={() => onRoomClick(room.number)}
-            canDrag={Boolean(room.activeStayId)}
+            canDrag={allowDrag && Boolean(room.activeStayId)}
             isDraggingAny={Boolean(draggingRoomNumber)}
             isDragSource={draggingRoomNumber === room.number}
             isDragOver={dragOverRoomNumber === room.number}

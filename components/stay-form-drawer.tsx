@@ -1,5 +1,6 @@
 'use client'
 
+import { AppConfirmDialog } from '@/components/app-confirm-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -21,6 +22,7 @@ import {
 } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
 import { authFetch } from '@/lib/api'
+import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { addDays, differenceInCalendarDays, format, parseISO } from 'date-fns'
@@ -276,6 +278,7 @@ export function StayFormDrawer({
   upcomingStays = []
 }: StayFormDrawerProps) {
   const queryClient = useQueryClient()
+  const { toast } = useToast()
   const hasActiveStay = Boolean(activeStay)
   const hasUpcomingStays = upcomingStays.length > 0
   const hasStayData = hasActiveStay || hasUpcomingStays
@@ -284,6 +287,7 @@ export function StayFormDrawer({
 
   const [mode, setMode] = useState<'view' | 'edit' | 'create' | 'add-upcoming'>('view')
   const [editingStayId, setEditingStayId] = useState<string | null>(null)
+  const [stayToDelete, setStayToDelete] = useState<Stay | null>(null)
 
   const getEmptyFormData = useCallback((status: 'active' | 'upcoming' = 'active'): FormData => {
     const defaultPeriod: StayPeriod = '2weeks'
@@ -331,6 +335,11 @@ export function StayFormDrawer({
       queryClient.invalidateQueries({ queryKey: ['stays'] })
       queryClient.invalidateQueries({ queryKey: ['rooms'] })
       queryClient.invalidateQueries({ queryKey: ['daily-stats'] })
+      toast({
+        title: '입실 정보 저장 완료',
+        description: '객실 정보가 최신 상태로 반영되었습니다.',
+        duration: 2500,
+      })
       setMode('view')
       setFormData(getEmptyFormData())
     }
@@ -350,6 +359,11 @@ export function StayFormDrawer({
       queryClient.invalidateQueries({ queryKey: ['stays'] })
       queryClient.invalidateQueries({ queryKey: ['rooms'] })
       queryClient.invalidateQueries({ queryKey: ['daily-stats'] })
+      toast({
+        title: '입실 정보 수정 완료',
+        description: '변경된 내용이 저장되었습니다.',
+        duration: 2500,
+      })
       setMode('view')
       setEditingStayId(null)
     }
@@ -368,12 +382,23 @@ export function StayFormDrawer({
       if (activeStay && editingStayId === activeStay.id) {
         onOpenChange(false)
       }
+      toast({
+        title: '산모 기록 삭제 완료',
+        description: '해당 입실 기록이 제거되었습니다.',
+        duration: 2500,
+      })
       setMode('view')
       setEditingStayId(null)
+      setStayToDelete(null)
     },
     onError: (error) => {
       console.error('Delete failed:', error)
-      alert('삭제에 실패했습니다. 다시 시도해주세요.')
+      toast({
+        variant: 'destructive',
+        title: '산모 기록 삭제 실패',
+        description: '잠시 후 다시 시도해주세요.',
+        duration: 5000,
+      })
     }
   })
 
@@ -398,9 +423,7 @@ export function StayFormDrawer({
   }
 
   const handleDelete = (stay: Stay) => {
-    if (confirm('정말로 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
-      deleteMutation.mutate(stay.id)
-    }
+    setStayToDelete(stay)
   }
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -649,8 +672,9 @@ export function StayFormDrawer({
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full sm:max-w-[560px] overflow-y-auto">
+    <>
+      <Sheet open={open} onOpenChange={onOpenChange}>
+        <SheetContent side="right" className="w-full sm:max-w-[560px] overflow-y-auto">
         <SheetHeader className="space-y-2 border-b pb-4">
           <SheetTitle className="flex items-center gap-2.5">
             <span className="inline-flex h-9 items-center rounded-lg bg-primary px-3 text-sm font-bold text-primary-foreground shadow-sm">
@@ -937,7 +961,25 @@ export function StayFormDrawer({
             </div>
           )}
         </div>
-      </SheetContent>
-    </Sheet>
+        </SheetContent>
+      </Sheet>
+
+      <AppConfirmDialog
+        open={Boolean(stayToDelete)}
+        title="산모 기록을 삭제하시겠습니까?"
+        description="이 작업은 되돌릴 수 없습니다. 해당 산모의 입실 정보가 객실 현황에서 제거됩니다."
+        confirmLabel="삭제"
+        confirmVariant="destructive"
+        confirmDisabled={deleteMutation.isPending}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setStayToDelete(null)
+        }}
+        onCancel={() => setStayToDelete(null)}
+        onConfirm={() => {
+          if (!stayToDelete) return
+          deleteMutation.mutate(stayToDelete.id)
+        }}
+      />
+    </>
   )
 }
