@@ -473,6 +473,7 @@ function ScheduleShareTab({ staff, targetMonth }: { staff: StaffScheduleViewMode
       const shareDescription = `${staff.name} 선생님 주간 근무표 (${rangeLabel})`
       const shareMeta = getShareUrls(monthKey, week.weekNum)
       const { shareUrl, imageUrl } = shareMeta
+      const shouldUseKakaoTemplateOnly = Boolean(kakaoAppKey) && !shareMeta.isLocalhost
 
       try {
         let sharedWithKakao = false
@@ -494,6 +495,15 @@ function ScheduleShareTab({ staff, targetMonth }: { staff: StaffScheduleViewMode
           toast({
             title: '카카오톡 공유 창 열기 완료',
             description: '친구 또는 단톡방을 선택해 전송하세요.',
+          })
+          return
+        }
+
+        if (shouldUseKakaoTemplateOnly) {
+          toast({
+            variant: 'destructive',
+            title: '카카오 템플릿 공유 실패',
+            description: '도메인/키 설정을 확인해 주세요. 개발자도구 Console 로그를 함께 확인하세요.',
           })
           return
         }
@@ -944,10 +954,12 @@ function getShareUrls(monthKey: string, weekNum: number) {
   const baseOrigin = getShareBaseOrigin()
   const path = `/share/schedule/${monthKey}/${weekNum}`
   const isLocalhost = isLocalhostOrigin(baseOrigin)
+  const shareUrl = buildAbsoluteUrl(baseOrigin, path)
+  const imageUrl = buildAbsoluteUrl(baseOrigin, `${path}/opengraph-image`)
 
   return {
-    shareUrl: `${baseOrigin}${path}`,
-    imageUrl: `${baseOrigin}${path}/opengraph-image`,
+    shareUrl,
+    imageUrl,
     isLocalhost,
   }
 }
@@ -955,18 +967,39 @@ function getShareUrls(monthKey: string, weekNum: number) {
 function getShareBaseOrigin() {
   const fromEnv = process.env.NEXT_PUBLIC_SHARE_BASE_URL?.trim()
   if (fromEnv) {
-    return stripTrailingSlash(fromEnv)
+    const normalized = normalizeOriginUrl(fromEnv)
+    if (normalized) return normalized
+    console.error('[Kakao Share] NEXT_PUBLIC_SHARE_BASE_URL 형식이 잘못되었습니다.', fromEnv)
   }
 
   if (typeof window !== 'undefined') {
-    return stripTrailingSlash(window.location.origin)
+    return normalizeOriginUrl(window.location.origin) ?? stripTrailingSlash(window.location.origin)
   }
 
   return ''
 }
 
+function normalizeOriginUrl(input: string) {
+  const candidate = /^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//.test(input) ? input : `https://${input}`
+  try {
+    const url = new URL(candidate)
+    return stripTrailingSlash(url.origin)
+  } catch {
+    return null
+  }
+}
+
 function stripTrailingSlash(url: string) {
   return url.replace(/\/+$/, '')
+}
+
+function buildAbsoluteUrl(baseOrigin: string, path: string) {
+  if (!baseOrigin) return path
+  try {
+    return new URL(path, `${baseOrigin}/`).toString()
+  } catch {
+    return `${stripTrailingSlash(baseOrigin)}${path}`
+  }
 }
 
 function isLocalhostOrigin(origin: string) {
