@@ -4,7 +4,7 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Allow login page and login API
-  if (pathname === '/login' || pathname === '/api/auth/login') {
+  if (pathname === '/login' || pathname === '/api/auth/login' || pathname.startsWith('/api/share/')) {
     return NextResponse.next()
   }
 

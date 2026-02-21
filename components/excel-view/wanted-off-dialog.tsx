@@ -471,15 +471,9 @@ function ScheduleShareTab({ staff, targetMonth }: { staff: StaffScheduleViewMode
       const rangeLabel = `${format(week.weekStart, 'MM.dd')} ~ ${format(week.weekEnd, 'MM.dd')}`
       const shareTitle = `[${monthLabel} ${week.weekNum}주차] 더헬리아 근무표 업데이트 완료!`
       const shareDescription = `${staff.name} 선생님 주간 근무표 (${rangeLabel})`
-      const shareMeta = getShareUrls(monthKey, week.weekNum)
+      const shareMeta = getShareUrls(monthKey, week.weekNum, staff.id)
       const { shareUrl, imageUrl } = shareMeta
       const shouldUseKakaoTemplateOnly = Boolean(kakaoAppKey) && !shareMeta.isLocalhost
-      console.info('[Kakao Share] payload', {
-        shareUrl,
-        imageUrl,
-        isLocalhost: shareMeta.isLocalhost,
-        hasKakaoKey: Boolean(kakaoAppKey),
-      })
 
       try {
         let sharedWithKakao = false
@@ -958,11 +952,12 @@ function canUseNativeShare() {
   return typeof navigator !== 'undefined' && 'share' in navigator && typeof navigator.share === 'function'
 }
 
-function getShareUrls(monthKey: string, weekNum: number) {
+function getShareUrls(monthKey: string, weekNum: number, staffId?: string) {
   const baseOrigin = getShareBaseOrigin()
   const path = `/share/schedule/${monthKey}/${weekNum}`
+  const query = staffId ? `?staff_id=${encodeURIComponent(staffId)}` : ''
   const isLocalhost = isLocalhostOrigin(baseOrigin)
-  const shareUrl = buildAbsoluteUrl(baseOrigin, path)
+  const shareUrl = buildAbsoluteUrl(baseOrigin, `${path}${query}`)
   const imageUrl = buildAbsoluteUrl(baseOrigin, `${path}/opengraph-image`)
 
   return {

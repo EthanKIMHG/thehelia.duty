@@ -1,4 +1,5 @@
 import { ImageResponse } from 'next/og'
+import { monthToKoreanLabel, normalizeShareMonth, normalizeShareWeek } from '@/lib/share-schedule'
 
 type ShareOgParams = {
   month: string
@@ -16,35 +17,10 @@ export const size = {
 }
 export const contentType = 'image/png'
 
-const MONTH_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/
-
-function getCurrentMonthKey() {
-  const now = new Date()
-  const year = now.getFullYear()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-  return `${year}-${month}`
-}
-
-function normalizeMonth(month: string) {
-  if (MONTH_REGEX.test(month)) return month
-  return getCurrentMonthKey()
-}
-
-function normalizeWeek(week: string) {
-  const parsed = Number.parseInt(week, 10)
-  if (Number.isNaN(parsed)) return 1
-  return Math.min(6, Math.max(1, parsed))
-}
-
-function monthToKoreanLabel(month: string) {
-  const monthNum = Number.parseInt(month.split('-')[1] ?? '1', 10)
-  return `${monthNum}월`
-}
-
 export default async function Image({ params }: ShareOgProps) {
   const resolved = await params
-  const month = normalizeMonth(resolved.month)
-  const week = normalizeWeek(resolved.week)
+  const month = normalizeShareMonth(resolved.month)
+  const week = normalizeShareWeek(resolved.week)
   const monthLabel = monthToKoreanLabel(month)
 
   return new ImageResponse(
