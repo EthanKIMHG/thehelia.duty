@@ -474,6 +474,12 @@ function ScheduleShareTab({ staff, targetMonth }: { staff: StaffScheduleViewMode
       const shareMeta = getShareUrls(monthKey, week.weekNum)
       const { shareUrl, imageUrl } = shareMeta
       const shouldUseKakaoTemplateOnly = Boolean(kakaoAppKey) && !shareMeta.isLocalhost
+      console.info('[Kakao Share] payload', {
+        shareUrl,
+        imageUrl,
+        isLocalhost: shareMeta.isLocalhost,
+        hasKakaoKey: Boolean(kakaoAppKey),
+      })
 
       try {
         let sharedWithKakao = false
@@ -931,9 +937,11 @@ type KakaoShareSdk = {
   init: (appKey: string) => void
   Share?: {
     sendDefault: (args: Record<string, unknown>) => void
+    sendScrap?: (args: Record<string, unknown>) => void
   }
   Link?: {
     sendDefault: (args: Record<string, unknown>) => void
+    sendScrap?: (args: Record<string, unknown>) => void
   }
 }
 
