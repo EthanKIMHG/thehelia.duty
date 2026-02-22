@@ -11,6 +11,7 @@ type CalendarDayCellProps = {
   currentDate: Date
   events: CalendarDateEvents
   maxVisibleEvents: number
+  onDayClick: (date: Date) => void
   onMoreClick: (date: Date, event: MouseEvent<HTMLButtonElement>) => void
 }
 
@@ -20,6 +21,7 @@ export function CalendarDayCell({
   currentDate,
   events,
   maxVisibleEvents,
+  onDayClick,
   onMoreClick,
 }: CalendarDayCellProps) {
   const holidayName = isHoliday(date)
@@ -38,8 +40,17 @@ export function CalendarDayCell({
 
   return (
     <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onDayClick(date)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onDayClick(date)
+        }
+      }}
       className={cn(
-        'min-h-[140px] bg-background p-2 transition-colors hover:bg-muted/10',
+        'min-h-[140px] cursor-pointer bg-background p-2 transition-colors hover:bg-muted/10',
         !isCurrentMonth && 'bg-muted/30 text-muted-foreground',
         isTodayDate && 'bg-accent/10',
       )}

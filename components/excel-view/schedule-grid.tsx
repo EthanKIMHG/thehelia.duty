@@ -3,14 +3,14 @@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { parseShift } from "@/lib/shift-utils"
 import { cn } from "@/lib/utils"
 import { format } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { GripVertical } from "lucide-react"
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { WantedOffSheet } from "./wanted-off-dialog"
 import { useToast } from '@/hooks/use-toast'
 import type { DailyWarningMap, DateCell, StaffScheduleViewModel } from "./types"
@@ -69,11 +69,37 @@ export function ScheduleGrid({
   const [draggingStaffId, setDraggingStaffId] = useState<string | null>(null)
   const [dragOverStaffId, setDragOverStaffId] = useState<string | null>(null)
   const [dragHandleStaffId, setDragHandleStaffId] = useState<string | null>(null)
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null)
+  const hasCenteredXScrollRef = useRef(false)
   const todayStr = format(new Date(), 'yyyy-MM-dd')
 
   useEffect(() => {
     setOrderedStaffMembers(staffMembers)
   }, [staffMembers])
+
+  useLayoutEffect(() => {
+    if (hasCenteredXScrollRef.current) return
+    const container = scrollContainerRef.current
+    if (!container) return
+
+    let rafId1 = 0
+    let rafId2 = 0
+
+    rafId1 = window.requestAnimationFrame(() => {
+      rafId2 = window.requestAnimationFrame(() => {
+        const maxScrollLeft = container.scrollWidth - container.clientWidth
+        if (maxScrollLeft > 0) {
+          container.scrollLeft = Math.floor(maxScrollLeft / 2)
+        }
+        hasCenteredXScrollRef.current = true
+      })
+    })
+
+    return () => {
+      if (rafId1) window.cancelAnimationFrame(rafId1)
+      if (rafId2) window.cancelAnimationFrame(rafId2)
+    }
+  }, [])
 
   const staffScheduleById = useMemo(() => {
     const lookup = new Map<string, Map<string, string>>()
@@ -156,28 +182,36 @@ export function ScheduleGrid({
   }
 
   return (
-    <div className="border rounded-md bg-card text-card-foreground shadow-sm overflow-x-auto relative">
-      <Table>
+    <div className="border rounded-md bg-card text-card-foreground shadow-sm relative">
+      <div
+        ref={scrollContainerRef}
+        className="max-h-[calc(100vh-16rem)] min-h-[420px] overflow-auto overscroll-contain"
+      >
+      <table className="w-full caption-bottom text-sm">
         <TableHeader>
           
           <TableRow>
-            <TableHead className="min-w-[220px] w-[220px] sticky left-0 bg-background z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+            <TableHead className="h-12 min-w-[220px] w-[220px] sticky left-0 top-0 bg-background z-50 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
               이름 (직종) / 날짜
             </TableHead>
             {dates.map((dateObj, i) => {
               if (!dateObj.isValid) {
-                 return <TableHead key={i} className="min-w-[40px] p-1 bg-muted/20" />
+                 return <TableHead key={i} className="h-12 min-w-[40px] p-1 bg-muted sticky top-0 z-40" />
               }
               const date = dateObj.date
               const dateStr = format(date, 'd')
               const dayStr = format(date, 'E', { locale: ko })
               const isWeekend = dayStr === '일' || dayStr === '토'
               const isToday = dateObj.dateStr === todayStr
+              const isOutOfMonthCol = !dateObj.isCurrentMonth
+              const isMonthBoundary = i > 0 && dates[i - 1]?.isCurrentMonth !== dateObj.isCurrentMonth
               return (
                 <TableHead key={dateObj.dateStr} className={cn(
-                  "text-center min-w-[40px] p-1 text-xs",
-                  isWeekend && "bg-orange-50/50 text-orange-700",
-                  isToday && "bg-primary/15 text-primary font-bold"
+                  "h-12 text-center min-w-[40px] p-1 text-xs sticky top-0 z-40 bg-background",
+                  isWeekend && "bg-orange-50 text-orange-700",
+                  isToday && "bg-sky-100 text-sky-700 font-bold",
+                  isOutOfMonthCol && "bg-slate-100 text-slate-700",
+                  isMonthBoundary && "border-l-2 border-l-slate-400"
                 )}>
                   <div>{dateStr}</div>
                   <div className={cn("font-normal text-[10px]", isToday && "font-bold")}>{dayStr}</div>
@@ -185,9 +219,9 @@ export function ScheduleGrid({
               )
             })}
             {/* Stats Columns */}
-            <TableHead className="text-center min-w-[50px] text-xs font-bold border-l">근무</TableHead>
-            <TableHead className="text-center min-w-[50px] text-xs font-bold border-l">휴무</TableHead>
-            <TableHead className="text-center min-w-[50px] text-xs font-bold border-l">OT</TableHead>
+            <TableHead className="h-12 text-center min-w-[50px] text-xs font-bold border-l sticky top-0 z-40 bg-background">근무</TableHead>
+            <TableHead className="h-12 text-center min-w-[50px] text-xs font-bold border-l sticky top-0 z-40 bg-background">휴무</TableHead>
+            <TableHead className="h-12 text-center min-w-[50px] text-xs font-bold border-l sticky top-0 z-40 bg-background">OT</TableHead>
           </TableRow>
           
 
@@ -195,31 +229,39 @@ export function ScheduleGrid({
         <TableBody>
           {/* Newborn Status Row */}
           {dailyWarnings && dailyWarnings.size > 0 && (
-            <TableRow className="hover:bg-muted/30 border-b-2 border-primary/20">
-              <TableCell className="min-w-[220px] w-[220px] sticky left-0 bg-background z-20 font-bold text-center shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+            <TableRow className="hover:bg-muted border-b-2 border-sky-200">
+              <TableCell className="min-w-[220px] w-[220px] sticky left-0 top-12 bg-background z-40 font-bold text-center shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                 <div className="flex items-center justify-center gap-1">
                   <span className="text-xs">👶 신생아 현황</span>
                 </div>
               </TableCell>
               {dates.map((dateObj, i) => {
                 if (!dateObj.isValid) {
-                  return <TableCell key={i} className="p-0 border-l bg-muted/20" />
+                  return <TableCell key={i} className="p-0 border-l bg-muted sticky top-12 z-30" />
                 }
 
                 const data = dailyWarnings.get(dateObj.dateStr)
-                if (!data) return <TableCell key={dateObj.dateStr} className="border-l" />
+                const isOutOfMonthCol = !dateObj.isCurrentMonth
+                const isMonthBoundary = i > 0 && dates[i - 1]?.isCurrentMonth !== dateObj.isCurrentMonth
+                if (!data) return <TableCell key={dateObj.dateStr} className={cn(
+                  "border-l sticky top-12 z-30 bg-background",
+                  isOutOfMonthCol && "bg-slate-100",
+                  isMonthBoundary && "border-l-2 border-l-slate-300"
+                )} />
 
                 const amCount = data.newborns - data.checkins + data.checkouts
                 const isTodayCol = dateObj.dateStr === todayStr
 
                 return (
                   <TableCell key={dateObj.dateStr} className={cn(
-                    "p-1 text-center border-l relative",
-                    isTodayCol && "bg-primary/5"
+                    "p-1 text-center border-l relative sticky top-12 z-30 bg-background",
+                    isTodayCol && "bg-sky-50",
+                    isOutOfMonthCol && "bg-slate-100",
+                    isMonthBoundary && "border-l-2 border-l-slate-300"
                   )}>
                      {/* Today Highlight Overlay */}
                     {isTodayCol && (
-                        <div className="absolute inset-0 bg-primary/10 pointer-events-none z-10 box-border border-x-2 border-primary/20" />
+                        <div className="absolute inset-0 pointer-events-none z-10 box-border border-x-2 border-sky-300" />
                     )}
                     <TooltipProvider delayDuration={200}>
                       <Tooltip>
@@ -234,16 +276,16 @@ export function ScheduleGrid({
                             <div className="flex gap-1 text-[9px] font-medium leading-none mt-0.5">
                               {(data.checkins > 0 || data.checkouts > 0) ? (
                                 <>
-                                  <span className={cn(data.checkins > 0 ? "text-blue-600" : "text-muted-foreground/20")}>
+                                  <span className={cn(data.checkins > 0 ? "text-blue-600" : "text-slate-300")}>
                                     +{data.checkins}
                                   </span>
-                                  <span className="text-muted-foreground/30">/</span>
-                                  <span className={cn(data.checkouts > 0 ? "text-orange-600" : "text-muted-foreground/20")}>
+                                  <span className="text-slate-300">/</span>
+                                  <span className={cn(data.checkouts > 0 ? "text-orange-600" : "text-slate-300")}>
                                     -{data.checkouts}
                                   </span>
                                 </>
                               ) : (
-                                <span className="text-muted-foreground/20">-</span>
+                                <span className="text-slate-300">-</span>
                               )}
                             </div>
                           </div>
@@ -270,9 +312,9 @@ export function ScheduleGrid({
                 )
               })}
               {/* Empty stats columns */}
-              <TableCell className="border-l bg-muted/5" />
-              <TableCell className="border-l bg-muted/5" />
-              <TableCell className="border-l bg-muted/5" />
+              <TableCell className="border-l bg-muted sticky top-12 z-30" />
+              <TableCell className="border-l bg-muted sticky top-12 z-30" />
+              <TableCell className="border-l bg-muted sticky top-12 z-30" />
             </TableRow>
           )}
           {orderedStaffMembers.map((staff) => (
@@ -280,9 +322,9 @@ export function ScheduleGrid({
               key={staff.id} 
               className={cn(
                 "group transition-colors",
-                hoveredRow === staff.id && "bg-muted/50",
-                draggingStaffId === staff.id && "opacity-50",
-                dragOverStaffId === staff.id && draggingStaffId !== staff.id && "bg-primary/10"
+                hoveredRow === staff.id && "bg-muted",
+                draggingStaffId === staff.id && "bg-muted",
+                dragOverStaffId === staff.id && draggingStaffId !== staff.id && "bg-sky-100"
               )}
               draggable={dragHandleStaffId === staff.id}
               onDragStart={(e) => {
@@ -314,7 +356,7 @@ export function ScheduleGrid({
               onMouseLeave={() => setHoveredRow(null)}
             >
               <TableCell 
-                className="font-medium min-w-[220px] w-[220px] sticky left-0 bg-background z-30 group-hover:bg-muted/50 transition-colors shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] cursor-pointer hover:bg-muted"
+                className="font-medium min-w-[220px] w-[220px] sticky left-0 bg-background z-30 group-hover:bg-muted transition-colors shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] cursor-pointer hover:bg-muted"
                 onClick={() => handleStaffClick(staff)}
               >
                   <div className="flex items-center gap-2 w-full px-2 h-full">
@@ -339,7 +381,7 @@ export function ScheduleGrid({
                           <GripVertical className="h-4 w-4" />
                         </Button>
                         <Avatar className="h-6 w-6 shrink-0">
-                            <AvatarFallback className="text-[10px] bg-primary/10 text-primary">
+                            <AvatarFallback className="text-[10px] bg-sky-100 text-sky-700">
                                 {staff.name[0]}
                             </AvatarFallback>
                         </Avatar>
@@ -352,27 +394,33 @@ export function ScheduleGrid({
               
               {dates.map((dateObj, i) => {
                 if (!dateObj.isValid) {
-                    return <TableCell key={i} className="p-0 border-l bg-muted/20" />
+                    return <TableCell key={i} className="p-0 border-l bg-muted" />
                 }
 
                 const shift = staffScheduleById.get(staff.id)?.get(dateObj.dateStr) || '/'
                 
                 const isTodayCol = dateObj.dateStr === todayStr
                 const isWantedOff = wantedOffStats?.get(staff.id)?.has(dateObj.dateStr)
+                const isOutOfMonthCol = !dateObj.isCurrentMonth
+                const isMonthBoundary = i > 0 && dates[i - 1]?.isCurrentMonth !== dateObj.isCurrentMonth
 
                 return (
-                  <TableCell key={dateObj.dateStr} className="p-0 text-center border-l relative group/cell">
+                  <TableCell key={dateObj.dateStr} className={cn(
+                    "p-0 text-center border-l relative group/cell",
+                    isOutOfMonthCol && "bg-slate-100",
+                    isMonthBoundary && "border-l-2 border-l-slate-300"
+                  )}>
                     {/* Today Highlight Overlay */}
                     {isTodayCol && (
-                        <div className="absolute inset-0 bg-primary/10 pointer-events-none z-10" />
+                        <div className="absolute inset-0 pointer-events-none z-20 border border-sky-300" />
                     )}
                     
                     {isWantedOff ? (
                         <TooltipProvider delayDuration={0}>
                             <Tooltip>
                                 <TooltipTrigger asChild>
-                                    <div className="h-10 w-full flex items-center justify-center bg-red-100/50 text-red-400 font-medium text-xs cursor-not-allowed select-none">
-                                        <div className="bg-red-200 rounded-full p-1 opacity-70">
+                                    <div className="h-10 w-full flex items-center justify-center bg-red-100 text-red-400 font-medium text-xs cursor-not-allowed select-none">
+                                        <div className="bg-red-200 rounded-full p-1">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
                                         </div>
                                     </div>
@@ -395,13 +443,13 @@ export function ScheduleGrid({
               })}
 
                {/* Stats Data */}
-               <TableCell className="text-center text-xs border-l bg-muted/10 font-medium">
+               <TableCell className="text-center text-xs border-l bg-muted font-medium">
                   {staff.stats.workDays}
                </TableCell>
-               <TableCell className="text-center text-xs border-l bg-muted/10 font-medium">
+               <TableCell className="text-center text-xs border-l bg-muted font-medium">
                   {staff.stats.offDays}
                </TableCell>
-               <TableCell className="text-center text-xs border-l bg-muted/10 font-medium">
+               <TableCell className="text-center text-xs border-l bg-muted font-medium">
                   {staff.stats.totalOT > 0 ? staff.stats.totalOT : '-'}
                </TableCell>
 
@@ -411,10 +459,10 @@ export function ScheduleGrid({
           {/* Staffing Warning Row */}
           {dailyWarnings && dailyWarnings.size > 0 && (
             <>
-              <TableRow className="border-t-2 border-orange-300/50">
-                <TableCell colSpan={dates.length + 4} className="p-0 h-3 bg-orange-50/20" />
+              <TableRow className="border-t-2 border-orange-300">
+                <TableCell colSpan={dates.length + 4} className="p-0 h-3 bg-orange-50" />
               </TableRow>
-              <TableRow className="hover:bg-muted/30">
+              <TableRow className="hover:bg-muted">
                 <TableCell className="min-w-[220px] w-[220px] sticky left-0 bg-background z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                   <div className="flex items-center justify-center">
                     <span className="inline-flex items-center justify-center h-6 px-1.5 rounded text-[10px] font-bold bg-orange-500 text-white whitespace-nowrap">
@@ -424,13 +472,19 @@ export function ScheduleGrid({
                 </TableCell>
                 {dates.map((dateObj, i) => {
                   if (!dateObj.isValid) {
-                    return <TableCell key={i} className="p-0 border-l bg-muted/20" />
+                    return <TableCell key={i} className="p-0 border-l bg-muted" />
                   }
 
                   const warning = dailyWarnings.get(dateObj.dateStr)
+                  const isOutOfMonthCol = !dateObj.isCurrentMonth
+                  const isMonthBoundary = i > 0 && dates[i - 1]?.isCurrentMonth !== dateObj.isCurrentMonth
                   if (!warning || warning.newborns === 0) {
                     return (
-                      <TableCell key={dateObj.dateStr} className="text-center text-xs p-1 border-l text-muted-foreground/30">
+                      <TableCell key={dateObj.dateStr} className={cn(
+                        "text-center text-xs p-1 border-l text-slate-400",
+                        isOutOfMonthCol && "bg-slate-100",
+                        isMonthBoundary && "border-l-2 border-l-slate-300"
+                      )}>
                         -
                       </TableCell>
                     )
@@ -462,7 +516,8 @@ export function ScheduleGrid({
                       className={cn(
                         "text-center text-[10px] p-0.5 border-l font-bold",
                         bgColor, textColor,
-                        isTodayCol && "ring-1 ring-inset ring-primary/30"
+                        isTodayCol && "ring-1 ring-inset ring-sky-300",
+                        isMonthBoundary && "border-l-2 border-l-slate-300"
                       )}
                     >
                       <TooltipProvider delayDuration={200}>
@@ -471,12 +526,12 @@ export function ScheduleGrid({
                             <div className="cursor-help leading-tight">
                               <div className="flex justify-center gap-px text-[9px]">
                                 <span className={warning.dDiff < 0 ? 'text-red-600' : warning.dDiff === 0 ? 'text-yellow-600' : 'text-green-600'}>{shiftLabel(warning.dDiff)}</span>
-                                <span className="text-muted-foreground/40">/</span>
+                                <span className="text-slate-300">/</span>
                                 <span className={warning.eDiff < 0 ? 'text-red-600' : warning.eDiff === 0 ? 'text-yellow-600' : 'text-green-600'}>{shiftLabel(warning.eDiff)}</span>
-                                <span className="text-muted-foreground/40">/</span>
+                                <span className="text-slate-300">/</span>
                                 <span className={warning.nDiff < 0 ? 'text-red-600' : warning.nDiff === 0 ? 'text-yellow-600' : 'text-green-600'}>{shiftLabel(warning.nDiff)}</span>
                               </div>
-                              <div className="text-[8px] font-normal opacity-60">{warning.newborns}명</div>
+                              <div className="text-[8px] font-normal text-slate-500">{warning.newborns}명</div>
                             </div>
                           </TooltipTrigger>
                           <TooltipContent side="bottom" className="text-xs space-y-1.5 min-w-[160px]">
@@ -509,11 +564,11 @@ export function ScheduleGrid({
           )}
 
           {/* Summary Rows */}
-          <TableRow className="border-t-2 border-primary/30">
-            <TableCell colSpan={dates.length + 4} className="p-0 h-3 bg-muted/20" />
+          <TableRow className="border-t-2 border-sky-300">
+            <TableCell colSpan={dates.length + 4} className="p-0 h-3 bg-muted" />
           </TableRow>
           {SUMMARY_SHIFT_TYPES.map(({ key, label, color }) => (
-              <TableRow key={key} className="hover:bg-muted/30">
+              <TableRow key={key} className="hover:bg-muted">
                 <TableCell className="min-w-[220px] w-[220px] sticky left-0 bg-background z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                   <div className="flex items-center justify-center">
                     <span className={cn(
@@ -526,19 +581,23 @@ export function ScheduleGrid({
                 </TableCell>
                 {dates.map((dateObj, i) => {
                   if (!dateObj.isValid) {
-                    return <TableCell key={i} className="p-0 border-l bg-muted/20" />
+                    return <TableCell key={i} className="p-0 border-l bg-muted" />
                   }
 
                   const count = summaryCountsByDate.get(dateObj.dateStr)?.[key] ?? 0
 
                   const isTodayCol = dateObj.dateStr === todayStr
+                  const isOutOfMonthCol = !dateObj.isCurrentMonth
+                  const isMonthBoundary = i > 0 && dates[i - 1]?.isCurrentMonth !== dateObj.isCurrentMonth
                   return (
                     <TableCell 
                       key={dateObj.dateStr} 
                       className={cn(
                         "text-center text-xs p-1 border-l font-medium",
-                        count > 0 ? "text-foreground" : "text-muted-foreground/40",
-                        isTodayCol && "bg-primary/10"
+                        count > 0 ? "text-foreground" : "text-slate-400",
+                        isTodayCol && "bg-sky-100",
+                        isOutOfMonthCol && "bg-slate-100",
+                        isMonthBoundary && "border-l-2 border-l-slate-300"
                       )}
                     >
                       {count}
@@ -552,7 +611,8 @@ export function ScheduleGrid({
               </TableRow>
             ))}
         </TableBody>
-      </Table>
+      </table>
+      </div>
       
       {selectedStaffForOff && (
         <WantedOffSheet 

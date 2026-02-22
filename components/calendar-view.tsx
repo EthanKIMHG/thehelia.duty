@@ -84,10 +84,14 @@ export function CalendarView() {
     return eventsByDate.get(format(selectedDate, 'yyyy-MM-dd')) ?? EMPTY_EVENTS
   }, [selectedDate, eventsByDate])
 
-  const handleMoreClick = (date: Date, event: MouseEvent<HTMLButtonElement>) => {
-    event.stopPropagation()
+  const handleDayClick = (date: Date) => {
     setSelectedDate(date)
     setDrawerOpen(true)
+  }
+
+  const handleMoreClick = (date: Date, event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation()
+    handleDayClick(date)
   }
 
   const prevMonth = () => setCurrentDate((prev) => subMonths(prev, 1))
@@ -155,6 +159,7 @@ export function CalendarView() {
         weeks={weeks}
         maxVisibleEvents={MAX_VISIBLE_EVENTS}
         getEventsForDate={getEventsForDate}
+        onDayClick={handleDayClick}
         onMoreClick={handleMoreClick}
       />
 

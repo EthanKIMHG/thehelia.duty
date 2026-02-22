@@ -15,7 +15,6 @@ import type { Staff, Stay } from '@/types'
 import { ExcelViewSkeleton } from './excel-view/excel-view-skeleton'
 import { MobileExcelView } from './excel-view/mobile/mobile-excel-view'
 import { ScheduleGrid } from './excel-view/schedule-grid'
-import { StaffingMeter } from './excel-view/staffing-meter'
 import type {
   DailyWarningMap,
   DateCell,
@@ -54,11 +53,6 @@ type PendingStaffRow = {
 type ParsedCsvPayload = {
   rows: PendingStaffRow[]
   invalidCells: number
-}
-
-type DailyStats = {
-  total_newborns: number
-  total_mothers: number
 }
 
 const escapeCsvValue = (value: string) => {
@@ -303,6 +297,16 @@ export function ExcelView() {
   const csvInputRef = useRef<HTMLInputElement | null>(null)
 
   const monthStr = useMemo(() => format(currentDate, 'yyyy-MM'), [currentDate])
+  const prevMonthDate = useMemo(
+    () => new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1),
+    [currentDate]
+  )
+  const prevMonthStr = useMemo(() => format(prevMonthDate, 'yyyy-MM'), [prevMonthDate])
+  const nextMonthDate = useMemo(
+    () => new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1),
+    [currentDate]
+  )
+  const nextMonthStr = useMemo(() => format(nextMonthDate, 'yyyy-MM'), [nextMonthDate])
 
   // Fetch Staff
   const staffQuery = useQuery<Staff[]>({
@@ -314,7 +318,7 @@ export function ExcelView() {
     },
   })
 
-  // Fetch Schedules
+  // Fetch Schedules (current month)
   const scheduleQuery = useQuery<ScheduleApiEntry[]>({
     queryKey: ['schedules', monthStr],
     queryFn: async () => {
@@ -325,14 +329,26 @@ export function ExcelView() {
     placeholderData: (previousData) => previousData,
   })
 
-  // Fetch Daily Stats (from Supabase view)
-  const dailyStatsQuery = useQuery<DailyStats>({
-    queryKey: ['daily-stats'],
+  // Fetch Schedules (previous month preview week data)
+  const prevMonthScheduleQuery = useQuery<ScheduleApiEntry[]>({
+    queryKey: ['schedules', prevMonthStr],
     queryFn: async () => {
-      const res = await authFetch('/api/daily-stats')
-      if (!res.ok) throw new Error('일간 통계를 불러오지 못했습니다.')
+      const res = await authFetch(`/api/schedules?month=${prevMonthStr}`)
+      if (!res.ok) throw new Error('지난달 스케줄 데이터를 불러오지 못했습니다.')
       return res.json()
     },
+    placeholderData: (previousData) => previousData,
+  })
+
+  // Fetch Schedules (next month preview week data)
+  const nextMonthScheduleQuery = useQuery<ScheduleApiEntry[]>({
+    queryKey: ['schedules', nextMonthStr],
+    queryFn: async () => {
+      const res = await authFetch(`/api/schedules?month=${nextMonthStr}`)
+      if (!res.ok) throw new Error('다음달 스케줄 데이터를 불러오지 못했습니다.')
+      return res.json()
+    },
+    placeholderData: (previousData) => previousData,
   })
 
   // Fetch Stays for staffing warnings
@@ -341,6 +357,26 @@ export function ExcelView() {
     queryFn: async () => {
       const res = await authFetch(`/api/stays?month=${monthStr}`)
       if (!res.ok) throw new Error('입퇴실 데이터를 불러오지 못했습니다.')
+      return res.json()
+    },
+    placeholderData: (previousData) => previousData,
+  })
+
+  const prevMonthStaysQuery = useQuery<Stay[]>({
+    queryKey: ['stays', prevMonthStr],
+    queryFn: async () => {
+      const res = await authFetch(`/api/stays?month=${prevMonthStr}`)
+      if (!res.ok) throw new Error('지난달 입퇴실 데이터를 불러오지 못했습니다.')
+      return res.json()
+    },
+    placeholderData: (previousData) => previousData,
+  })
+
+  const nextMonthStaysQuery = useQuery<Stay[]>({
+    queryKey: ['stays', nextMonthStr],
+    queryFn: async () => {
+      const res = await authFetch(`/api/stays?month=${nextMonthStr}`)
+      if (!res.ok) throw new Error('다음달 입퇴실 데이터를 불러오지 못했습니다.')
       return res.json()
     },
     placeholderData: (previousData) => previousData,
@@ -357,26 +393,96 @@ export function ExcelView() {
     placeholderData: (previousData) => previousData,
   })
 
+  const prevMonthWantedOffsQuery = useQuery<WantedOffRecord[]>({
+    queryKey: ['wanted-offs', prevMonthStr],
+    queryFn: async () => {
+      const res = await authFetch(`/api/wanted-offs?month=${prevMonthStr}`)
+      if (!res.ok) throw new Error('지난달 희망 휴무 데이터를 불러오지 못했습니다.')
+      return res.json()
+    },
+    placeholderData: (previousData) => previousData,
+  })
+
+  const nextMonthWantedOffsQuery = useQuery<WantedOffRecord[]>({
+    queryKey: ['wanted-offs', nextMonthStr],
+    queryFn: async () => {
+      const res = await authFetch(`/api/wanted-offs?month=${nextMonthStr}`)
+      if (!res.ok) throw new Error('다음달 희망 휴무 데이터를 불러오지 못했습니다.')
+      return res.json()
+    },
+    placeholderData: (previousData) => previousData,
+  })
+
   const staffData = useMemo(() => staffQuery.data ?? [], [staffQuery.data])
-  const scheduleData = useMemo(() => scheduleQuery.data ?? [], [scheduleQuery.data])
-  const dailyStats = dailyStatsQuery.data
-  const staysData = useMemo(() => staysQuery.data ?? [], [staysQuery.data])
-  const wantedOffsData = useMemo(() => wantedOffsQuery.data ?? [], [wantedOffsQuery.data])
-  const refetchSchedules = scheduleQuery.refetch
+  const scheduleData = useMemo(() => {
+    const merged = [
+      ...(prevMonthScheduleQuery.data ?? []),
+      ...(scheduleQuery.data ?? []),
+      ...(nextMonthScheduleQuery.data ?? []),
+    ]
+
+    const deduped = new Map<string, ScheduleApiEntry>()
+    merged.forEach((entry) => {
+      deduped.set(`${entry.staff_id}|${entry.work_date}`, entry)
+    })
+    return Array.from(deduped.values())
+  }, [prevMonthScheduleQuery.data, scheduleQuery.data, nextMonthScheduleQuery.data])
+  const staysData = useMemo(() => {
+    const merged = [
+      ...(prevMonthStaysQuery.data ?? []),
+      ...(staysQuery.data ?? []),
+      ...(nextMonthStaysQuery.data ?? []),
+    ]
+    const deduped = new Map<string, Stay>()
+    merged.forEach((stay) => {
+      const key = stay.id ? String(stay.id) : `${stay.room_number}-${stay.check_in_date}-${stay.mother_name}`
+      deduped.set(key, stay)
+    })
+    return Array.from(deduped.values())
+  }, [prevMonthStaysQuery.data, staysQuery.data, nextMonthStaysQuery.data])
+  const wantedOffsData = useMemo(() => {
+    const merged = [
+      ...(prevMonthWantedOffsQuery.data ?? []),
+      ...(wantedOffsQuery.data ?? []),
+      ...(nextMonthWantedOffsQuery.data ?? []),
+    ]
+    const deduped = new Map<string, WantedOffRecord>()
+    merged.forEach((item) => {
+      deduped.set(`${item.staff_id}|${item.wanted_date}`, item)
+    })
+    return Array.from(deduped.values())
+  }, [prevMonthWantedOffsQuery.data, wantedOffsQuery.data, nextMonthWantedOffsQuery.data])
+  const refetchSchedules = async () => {
+    await Promise.all([
+      prevMonthScheduleQuery.refetch(),
+      scheduleQuery.refetch(),
+      nextMonthScheduleQuery.refetch(),
+    ])
+  }
 
   const isBootstrapping =
     staffQuery.isPending ||
     scheduleQuery.isPending ||
-    dailyStatsQuery.isPending ||
+    prevMonthScheduleQuery.isPending ||
+    nextMonthScheduleQuery.isPending ||
     staysQuery.isPending ||
-    wantedOffsQuery.isPending
+    prevMonthStaysQuery.isPending ||
+    nextMonthStaysQuery.isPending ||
+    wantedOffsQuery.isPending ||
+    prevMonthWantedOffsQuery.isPending ||
+    nextMonthWantedOffsQuery.isPending
 
   const queryError =
     staffQuery.error ||
     scheduleQuery.error ||
-    dailyStatsQuery.error ||
+    prevMonthScheduleQuery.error ||
+    nextMonthScheduleQuery.error ||
     staysQuery.error ||
-    wantedOffsQuery.error
+    prevMonthStaysQuery.error ||
+    nextMonthStaysQuery.error ||
+    wantedOffsQuery.error ||
+    prevMonthWantedOffsQuery.error ||
+    nextMonthWantedOffsQuery.error
 
   // Process wanted offs into a map for easy lookup: staffId -> Set<dateStr>
   const wantedOffStats = useMemo(() => {
@@ -390,17 +496,43 @@ export function ExcelView() {
     return map
   }, [wantedOffsData])
 
-  // Generate dates for current month (only valid days)
+  // Generate dates for previous month preview (7 days) + current month + next month preview (7 days)
   const dates = useMemo<DateCell[]>(() => {
+    const prevMonthLastDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), 0)
+    const prevMonthDaysInMonth = prevMonthLastDate.getDate()
+    const prevMonthPreviewDates = Array.from({ length: 7 }, (_, i) => {
+      const day = prevMonthDaysInMonth - 6 + i
+      const d = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, day)
+      return {
+        date: d,
+        isValid: true,
+        dateStr: format(d, 'yyyy-MM-dd'),
+        isCurrentMonth: false,
+      }
+    })
+
     const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate()
-    return Array.from({ length: daysInMonth }, (_, i) => {
+    const currentMonthDates = Array.from({ length: daysInMonth }, (_, i) => {
       const d = new Date(currentDate.getFullYear(), currentDate.getMonth(), i + 1)
       return {
           date: d,
           isValid: true,
-          dateStr: format(d, 'yyyy-MM-dd')
+          dateStr: format(d, 'yyyy-MM-dd'),
+          isCurrentMonth: true,
       }
     })
+
+    const nextMonthPreviewDates = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, i + 1)
+      return {
+        date: d,
+        isValid: true,
+        dateStr: format(d, 'yyyy-MM-dd'),
+        isCurrentMonth: false,
+      }
+    })
+
+    return [...prevMonthPreviewDates, ...currentMonthDates, ...nextMonthPreviewDates]
   }, [currentDate])
 
   const scheduleLookupByStaff = useMemo(() => {
@@ -428,6 +560,8 @@ export function ExcelView() {
         }
       })
 
+      const currentMonthSchedule = fullSchedule.filter((entry) => entry.date.startsWith(`${monthStr}-`))
+
       return {
         id: staff.id,
         name: staff.name,
@@ -435,27 +569,10 @@ export function ExcelView() {
         employmentType: staff.employment_type,
         schedule: fullSchedule,
         scheduleByDate: new Map(fullSchedule.map((entry) => [entry.date, entry.type])),
-        stats: calculateMonthlyStats(fullSchedule)
+        stats: calculateMonthlyStats(currentMonthSchedule)
       }
     })
-  }, [staffData, scheduleLookupByStaff, dates])
-
-  // Stats Logic
-  const todayStr = useMemo(() => format(new Date(), 'yyyy-MM-dd'), [])
-  const { totalNurses, totalAssistants } = useMemo(() => {
-    const todaysWorkingStaff = staffList.filter((staff) => {
-      const shift = staff.scheduleByDate.get(todayStr)
-      return shift && shift !== '/'
-    })
-
-    return {
-      totalNurses: todaysWorkingStaff.filter((staff) => staff.role === 'Nurse').length,
-      totalAssistants: todaysWorkingStaff.filter((staff) => staff.role === 'Assistant').length
-    }
-  }, [staffList, todayStr])
-  
-  // Get total newborns from daily stats view
-  const totalNewborns = dailyStats?.total_newborns || 0
+  }, [staffData, scheduleLookupByStaff, dates, monthStr])
 
   // Calculate daily newborn projections and staffing warnings
   const dailyWarnings = useMemo<DailyWarningMap>(() => {
@@ -586,7 +703,7 @@ export function ExcelView() {
         scheduleData,
         staysData,
         wantedOffStats,
-        dates: dates.filter((d) => d.isValid).map((d) => d.dateStr)
+        dates: dates.filter((d) => d.isValid && d.isCurrentMonth).map((d) => d.dateStr)
       })
 
       if (result.entries.length > 0) {
@@ -649,7 +766,7 @@ export function ExcelView() {
   }
 
   const executeCsvExport = () => {
-    const dateCols = dates.filter((d) => d.isValid).map((d) => d.dateStr)
+    const dateCols = dates.filter((d) => d.isValid && d.isCurrentMonth).map((d) => d.dateStr)
     const header = ['staff_id', 'staff_name', 'employment_type', 'role', ...dateCols]
     const staffMap = new Map(staffData.map((staff) => [staff.id, staff]))
 
@@ -893,13 +1010,6 @@ export function ExcelView() {
 
   return (
     <div className="space-y-6">
-      {/* 1. Health Meter */}
-      <StaffingMeter 
-        totalNewborns={totalNewborns} 
-        totalNurses={totalNurses} 
-        totalAssistants={totalAssistants} 
-      />
-
       {/* Toolbar */}
       <div className="flex min-w-0 flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div className="shrink-0 text-lg font-bold">{format(currentDate, 'yyyy년 M월')}</div>

@@ -7,6 +7,7 @@ export interface DateCell {
   date: Date
   isValid: boolean
   dateStr: string
+  isCurrentMonth: boolean
 }
 
 export interface ScheduleApiEntry {

@@ -8,6 +8,7 @@ type CalendarMonthGridProps = {
   weeks: Date[][]
   maxVisibleEvents: number
   getEventsForDate: (date: Date) => CalendarDateEvents
+  onDayClick: (date: Date) => void
   onMoreClick: (date: Date, event: MouseEvent<HTMLButtonElement>) => void
 }
 
@@ -18,6 +19,7 @@ export function CalendarMonthGrid({
   weeks,
   maxVisibleEvents,
   getEventsForDate,
+  onDayClick,
   onMoreClick,
 }: CalendarMonthGridProps) {
   return (
@@ -48,6 +50,7 @@ export function CalendarMonthGrid({
                 currentDate={currentDate}
                 events={getEventsForDate(date)}
                 maxVisibleEvents={maxVisibleEvents}
+                onDayClick={onDayClick}
                 onMoreClick={onMoreClick}
               />
             ))}

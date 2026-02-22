@@ -566,16 +566,16 @@ function ScheduleShareTab({ staff, targetMonth }: { staff: StaffScheduleViewMode
                  
                  return (
                     <div key={weekStart.toISOString()} className="rounded-xl border-2 border-border bg-card p-4 space-y-3 shadow-sm">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-baseline gap-2">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="flex min-w-0 flex-col">
                                 <h4 className="text-lg font-black tracking-tight">
                                     {format(targetMonth, 'M월', { locale: ko })} {weekNum}주차
                                 </h4>
                                 <span className="text-sm text-muted-foreground font-medium">
-                                    {format(week.weekStart, 'MM.dd')} ~ {format(week.weekEnd, 'MM.dd')}
+                                    {format(week.weekStart, 'MM.dd(E)', { locale: ko })} ~ {format(week.weekEnd, 'MM.dd(E)', { locale: ko })}
                                 </span>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                               <Button
                                 type="button"
                                 variant="outline"
