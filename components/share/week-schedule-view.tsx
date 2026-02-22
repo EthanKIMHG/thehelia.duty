@@ -131,6 +131,7 @@ export function WeekScheduleView({ month, week, staffId }: WeekScheduleViewProps
   const data = query.data
   const isSingleStaff = Boolean(data && data.staff.length === 1)
   const singleStaff = isSingleStaff ? data?.staff[0] : null
+  const shouldShowGroupView = Boolean(data && !data.staffId && data.staff.length > 1)
   const title = isSingleStaff && singleStaff
     ? `${singleStaff.name} 선생님 근무표`
     : '주간 근무표'
@@ -225,45 +226,47 @@ export function WeekScheduleView({ month, week, staffId }: WeekScheduleViewProps
         </section>
       ) : null}
 
-      <div className="space-y-3">
-        {data.days.map((day) => (
-          <section key={day.date} className={cn('rounded-2xl border bg-white p-4 shadow-sm sm:p-5', day.isToday && 'border-blue-300 ring-2 ring-blue-100')}>
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="text-2xl font-black text-slate-900">
-                {day.dateLabel} ({day.dayLabel})
-              </p>
-              {day.isToday ? <span className="rounded-md bg-blue-100 px-2 py-1 text-sm font-bold text-blue-900">오늘</span> : null}
-            </div>
+      {shouldShowGroupView ? (
+        <div className="space-y-3">
+          {data.days.map((day) => (
+            <section key={day.date} className={cn('rounded-2xl border bg-white p-4 shadow-sm sm:p-5', day.isToday && 'border-blue-300 ring-2 ring-blue-100')}>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-2xl font-black text-slate-900">
+                  {day.dateLabel} ({day.dayLabel})
+                </p>
+                {day.isToday ? <span className="rounded-md bg-blue-100 px-2 py-1 text-sm font-bold text-blue-900">오늘</span> : null}
+              </div>
 
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              {(['D', 'E', 'N', 'M', 'DE'] as const).map((shiftType) => {
-                const members = day.groups[shiftType]
-                return (
-                  <article key={shiftType} className={cn('rounded-xl border p-3', SHIFT_META[shiftType].className)}>
-                    <div className="flex items-center justify-between">
-                      <p className="text-lg font-black">{SHIFT_META[shiftType].label}</p>
-                      <p className="text-base font-extrabold">{members.length}명</p>
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {members.length > 0 ? (
-                        members.map((member) => (
-                          <span key={member.staffId} className="rounded-lg bg-white/80 px-2 py-1 text-sm font-bold">
-                            {member.name}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="text-sm font-semibold opacity-80">배정 없음</span>
-                      )}
-                    </div>
-                  </article>
-                )
-              })}
-            </div>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {(['D', 'E', 'N', 'M', 'DE'] as const).map((shiftType) => {
+                  const members = day.groups[shiftType]
+                  return (
+                    <article key={shiftType} className={cn('rounded-xl border p-3', SHIFT_META[shiftType].className)}>
+                      <div className="flex items-center justify-between">
+                        <p className="text-lg font-black">{SHIFT_META[shiftType].label}</p>
+                        <p className="text-base font-extrabold">{members.length}명</p>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {members.length > 0 ? (
+                          members.map((member) => (
+                            <span key={member.staffId} className="rounded-lg bg-white/80 px-2 py-1 text-sm font-bold">
+                              {member.name}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-sm font-semibold opacity-80">배정 없음</span>
+                        )}
+                      </div>
+                    </article>
+                  )
+                })}
+              </div>
 
-            <p className="mt-3 text-sm font-semibold text-slate-600">휴무: {day.groups.OFF.length}명</p>
-          </section>
-        ))}
-      </div>
+              <p className="mt-3 text-sm font-semibold text-slate-600">휴무: {day.groups.OFF.length}명</p>
+            </section>
+          ))}
+        </div>
+      ) : null}
     </main>
   )
 }

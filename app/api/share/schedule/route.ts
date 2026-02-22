@@ -25,6 +25,7 @@ export async function GET(request: Request) {
   const month = normalizeShareMonth(searchParams.get('month'))
   const week = normalizeShareWeek(searchParams.get('week'))
   const staffId = searchParams.get('staff_id')?.trim() || null
+  const shouldExposeGroups = !staffId
   const { weekStart, weekEnd, weekNumber } = resolveShareWeekRange(month, week)
   const startDate = format(weekStart, 'yyyy-MM-dd')
   const endDate = format(weekEnd, 'yyyy-MM-dd')
@@ -106,12 +107,14 @@ export async function GET(request: Request) {
         dutyCode: parsed.original || dutyCode || '/',
       }
 
-      if (parsed.type === 'D') groups.D.push(item)
-      else if (parsed.type === 'E') groups.E.push(item)
-      else if (parsed.type === 'N') groups.N.push(item)
-      else if (parsed.type === 'M') groups.M.push(item)
-      else if (parsed.type === 'DE') groups.DE.push(item)
-      else groups.OFF.push(item)
+      if (shouldExposeGroups) {
+        if (parsed.type === 'D') groups.D.push(item)
+        else if (parsed.type === 'E') groups.E.push(item)
+        else if (parsed.type === 'N') groups.N.push(item)
+        else if (parsed.type === 'M') groups.M.push(item)
+        else if (parsed.type === 'DE') groups.DE.push(item)
+        else groups.OFF.push(item)
+      }
 
       return {
         staffId: staff.id,
