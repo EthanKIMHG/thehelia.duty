@@ -139,6 +139,13 @@ const formatShortDate = (value?: string) => {
   return format(parsed, 'M/d')
 }
 
+const formatDetailDate = (value?: string) => {
+  if (!value) return '-'
+  const parsed = parseISO(value)
+  if (Number.isNaN(parsed.getTime())) return value
+  return format(parsed, 'yyyy.MM.dd')
+}
+
 type BabyDisplaySource = {
   baby_count?: number
   baby_names?: string[]
@@ -185,6 +192,18 @@ const getBabyWeightSummary = (babies: Array<{ weight?: number | null }>) => {
       const formatted = formatWeight(baby.weight)
       if (formatted === '-') return ''
       return babies.length > 1 ? `아기${idx + 1} ${formatted}` : formatted
+    })
+    .filter((value) => value !== '')
+
+  return values.join(', ')
+}
+
+const getBabyGenderSummary = (babies: Array<{ gender?: string | null }>) => {
+  const values = babies
+    .map((baby, idx) => {
+      const value = baby.gender?.trim()
+      if (!value) return ''
+      return babies.length > 1 ? `아기${idx + 1} ${value}` : value
     })
     .filter((value) => value !== '')
 
@@ -304,6 +323,10 @@ export function RoomView() {
         activeStayId: stay?.id,
         motherName: stay?.mother_name,
         babyCount: stay?.baby_count,
+        babyNames: stay?.baby_names || [],
+        babyProfiles: stay?.baby_profiles || null,
+        gender: stay?.gender || null,
+        babyWeight: stay?.baby_weight ?? null,
         checkInDate: stay?.check_in_date,
         checkOutDate: stay?.check_out_date,
         eduDate: stay?.edu_date,
@@ -955,28 +978,66 @@ export function RoomView() {
                   {statDialogData.stays.map((stay) => {
                     const displayBabies = getDisplayBabies(stay)
                     const nameSummary = getBabyNameSummary(displayBabies)
+                    const genderSummary = getBabyGenderSummary(displayBabies)
                     const weightSummary = getBabyWeightSummary(displayBabies)
 
                     return (
                       <div
                         key={stay.id}
-                        className="rounded-xl border bg-muted/20 px-3 py-3 flex items-center justify-between gap-3"
+                        className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4"
                       >
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex min-w-0 items-center gap-2">
                             <Badge variant="secondary">{stay.room_number}호</Badge>
-                            <span className="font-semibold truncate">{stay.mother_name}</span>
+                            <span className="truncate text-base font-bold text-slate-900">{stay.mother_name}</span>
                           </div>
-                          <div className="mt-1 text-xs text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1">
-                            <span>태명: {nameSummary || '-'}</span>
-                            <span>몸무게: {weightSummary || '-'}</span>
-                            <span>입실: {formatShortDate(stay.check_in_date)}</span>
-                            <span>퇴실: {formatShortDate(stay.check_out_date)}</span>
-                          </div>
+                          <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50">
+                            신생아 {stay.baby_count}명
+                          </Badge>
                         </div>
-                        <div className="text-right">
-                          <p className="text-[11px] text-muted-foreground">신생아</p>
-                          <p className="text-xl font-extrabold leading-none">{stay.baby_count}</p>
+
+                        <div className="mt-3 grid gap-3 md:grid-cols-2">
+                          <section className="rounded-xl border border-slate-200 bg-white p-3">
+                            <p className="text-xs font-semibold text-slate-500">산모 정보</p>
+                            <dl className="mt-2 grid grid-cols-[52px_1fr] gap-x-2 gap-y-1.5 text-sm">
+                              <dt className="text-slate-500">성함</dt>
+                              <dd className="font-semibold text-slate-900">{stay.mother_name || '-'}</dd>
+                              <dt className="text-slate-500">입실일</dt>
+                              <dd className="font-medium text-slate-800">{formatDetailDate(stay.check_in_date)}</dd>
+                              <dt className="text-slate-500">퇴실일</dt>
+                              <dd className="font-medium text-slate-800">{formatDetailDate(stay.check_out_date)}</dd>
+                              <dt className="text-slate-500">교육일</dt>
+                              <dd className="font-medium text-slate-800">{formatDetailDate(stay.edu_date)}</dd>
+                            </dl>
+                          </section>
+
+                          <section className="rounded-xl border border-slate-200 bg-white p-3">
+                            <p className="text-xs font-semibold text-slate-500">신생아 정보</p>
+                            <dl className="mt-2 grid grid-cols-[52px_1fr] gap-x-2 gap-y-1.5 text-sm">
+                              <dt className="text-slate-500">이름</dt>
+                              <dd className="font-medium text-slate-800">{nameSummary || '-'}</dd>
+                              <dt className="text-slate-500">성별</dt>
+                              <dd className="font-medium text-slate-800">{genderSummary || '-'}</dd>
+                              <dt className="text-slate-500">몸무게</dt>
+                              <dd className="font-medium text-slate-800">{weightSummary || '-'}</dd>
+                            </dl>
+                          </section>
+                        </div>
+
+                        <div className="mt-3 space-y-2">
+                          {displayBabies.map((baby, index) => (
+                            <div
+                              key={`${stay.id}-baby-${index}`}
+                              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs"
+                            >
+                              <div className="grid grid-cols-[64px_1fr] items-center gap-x-2 gap-y-1.5 sm:grid-cols-[56px_1fr_72px_78px] sm:gap-y-0">
+                                <span className="font-semibold text-slate-500">아기 {index + 1}</span>
+                                <span className="truncate font-semibold text-slate-900">{baby.name?.trim() || '-'}</span>
+                                <span className="text-slate-700 sm:text-right">{baby.gender?.trim() || '-'}</span>
+                                <span className="font-medium text-slate-700 sm:text-right">{formatWeight(baby.weight)}</span>
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     )

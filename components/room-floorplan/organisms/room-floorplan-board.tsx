@@ -59,7 +59,7 @@ export function RoomFloorplanBoard({
         <div
           key={roomNumber}
           aria-hidden="true"
-          className="aspect-square min-h-[172px] rounded-2xl border border-transparent md:min-h-[196px]"
+          className="aspect-square min-h-[196px] rounded-2xl border border-transparent md:min-h-[224px]"
         />
       )
     }
@@ -92,18 +92,20 @@ export function RoomFloorplanBoard({
 
         <div className={topLineClass}>{layout.topLine.map(renderRoomSlot)}</div>
 
-        <div className="rounded-2xl border border-[hsl(var(--fp-border))] bg-[hsl(var(--fp-surface))] p-4">
+        <div className="rounded-2xl border border-[hsl(var(--fp-border))] bg-[hsl(var(--fp-surface))] p-4 md:p-5">
           {floor === '5F' ? (
-            <div className="mx-auto grid w-full max-w-[540px] grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <SharedSpaceNode
                 icon={<Baby className="h-4 w-4" />}
                 title="신생아실 1"
                 description="5층 중심 공용공간입니다. 객실 편집 기능은 제공하지 않습니다."
+                className="aspect-auto min-h-[214px] md:min-h-[238px] md:p-5"
               />
               <SharedSpaceNode
                 icon={<Baby className="h-4 w-4" />}
                 title="신생아실 2"
                 description="신생아 관리 동선을 고려한 정보성 노드입니다."
+                className="aspect-auto min-h-[214px] md:min-h-[238px] md:p-5"
               />
             </div>
           ) : (
@@ -112,16 +114,19 @@ export function RoomFloorplanBoard({
                 icon={<Building2 className="h-4 w-4" />}
                 title="다용도실"
                 description="6층 공용 서비스 공간입니다."
+                className="aspect-auto min-h-[132px] md:min-h-[148px]"
               />
               <SharedSpaceNode
                 icon={<Sparkles className="h-4 w-4" />}
                 title="에스테틱"
                 description="산후 관리 서비스 공간입니다."
+                className="aspect-auto min-h-[132px] md:min-h-[148px]"
               />
               <SharedSpaceNode
                 icon={<Waves className="h-4 w-4" />}
                 title="스파"
                 description="힐링 프로그램 공간입니다."
+                className="aspect-auto min-h-[132px] md:min-h-[148px]"
               />
             </div>
           )}

@@ -21,6 +21,14 @@ export interface FloorplanRoom {
   activeStayId?: string
   motherName?: string
   babyCount?: number
+  babyNames?: string[]
+  babyProfiles?: Array<{
+    name?: string | null
+    gender?: string | null
+    weight?: number | null
+  }> | null
+  gender?: string | null
+  babyWeight?: number | null
   checkInDate?: string
   checkOutDate?: string
   eduDate?: string

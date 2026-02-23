@@ -23,17 +23,18 @@ export function SharedSpaceNode({ icon, title, description, className }: SharedS
             role="note"
             aria-label={`${title}, 공용 공간`}
             className={cn(
-              'flex aspect-square min-h-[172px] flex-col justify-between rounded-2xl border border-[hsl(var(--fp-border))] bg-white/70 px-3 py-3 text-left md:min-h-[196px] md:p-4',
+              'flex aspect-square min-h-[172px] flex-col rounded-2xl border border-[hsl(var(--fp-border))] bg-white/80 px-3 py-3 text-left shadow-sm md:min-h-[196px] md:p-4',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
               className,
             )}
           >
-            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[hsl(var(--fp-border))] bg-[hsl(var(--fp-surface))] text-foreground">
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[hsl(var(--fp-border))] bg-[hsl(var(--fp-surface))] text-foreground">
               {icon}
             </span>
-            <div>
-              <p className="text-sm font-semibold text-foreground">{title}</p>
-              <p className="mt-1 text-xs text-muted-foreground">정보 보기</p>
+            <div className="mt-3">
+              <p className="text-base font-bold text-foreground">{title}</p>
+              <p className="mt-1 max-h-[2.8em] overflow-hidden text-xs leading-relaxed text-muted-foreground">{description}</p>
+              <p className="mt-2 text-[11px] font-medium text-muted-foreground">터치하여 정보 보기</p>
             </div>
           </div>
         </TooltipTrigger>
