@@ -1,11 +1,22 @@
 'use client'
 
 import { AppConfirmDialog } from '@/components/app-confirm-dialog'
+import {
+  EXCLUDED_ROOM_NUMBERS,
+  getFloorFromRoomNumber,
+  getRoomTypeByNumber,
+  RoomFloorplanBoard,
+  RoomFloorplanSkeleton,
+  RoomStatusLegend,
+  ROOM_FILTER_OPTIONS,
+  type FloorplanRoom,
+  type RoomFilter,
+} from '@/components/room-floorplan'
 import { StayFormDrawer } from '@/components/stay-form-drawer'
 import { StayHistoryView } from '@/components/stay-history-view'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -20,7 +31,7 @@ import { authFetch } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { addDays, differenceInDays, format, parseISO } from 'date-fns'
-import { Baby, BedDouble, CalendarRange, Eye, EyeOff, GripVertical, LogIn, LogOut, RefreshCw, Users } from 'lucide-react'
+import { Baby, CalendarRange, Eye, EyeOff, LogIn, LogOut, RefreshCw, Users } from 'lucide-react'
 import { useEffect, useMemo, useState, type DragEvent } from 'react'
 
 interface Stay {
@@ -53,29 +64,7 @@ interface RoomFromAPI {
   current_stay: Stay | null
 }
 
-interface Room {
-  id: string
-  number: string
-  type: 'Prestige' | 'VIP' | 'VVIP'
-  status: 'Empty' | 'Occupied'
-  activeStayId?: string
-  motherName?: string
-  babyCount?: number
-  babyNames?: string[]
-  babyProfiles?: Array<{
-    name?: string | null
-    gender?: string | null
-    weight?: number | null
-  }> | null
-  gender?: string | null
-  babyWeight?: number | null
-  birthHospital?: string | null
-  checkInDate?: string
-  checkOutDate?: string
-  eduDate?: string
-  checkOutDday?: number
-  upcomingStays: Stay[]
-}
+type Room = FloorplanRoom
 
 interface SyncStatusResponse {
   success: boolean
@@ -190,16 +179,6 @@ const getBabyNameSummary = (babies: Array<{ name?: string | null }>) => {
     .join(', ')
 }
 
-const getBabyGenderSummary = (babies: Array<{ gender?: string | null }>, fallback?: string | null) => {
-  const fromBabies = babies
-    .map((baby) => baby.gender?.trim())
-    .filter((gender): gender is string => Boolean(gender))
-    .join('/')
-
-  if (fromBabies) return fromBabies
-  return fallback || ''
-}
-
 const getBabyWeightSummary = (babies: Array<{ weight?: number | null }>) => {
   const values = babies
     .map((baby, idx) => {
@@ -210,28 +189,6 @@ const getBabyWeightSummary = (babies: Array<{ weight?: number | null }>) => {
     .filter((value) => value !== '')
 
   return values.join(', ')
-}
-
-type ChipTone = 'neutral' | 'boy' | 'girl' | 'mixed'
-
-const getChipToneFromGender = (gender?: string | null): ChipTone => {
-  const raw = (gender || '').trim()
-  if (!raw) return 'neutral'
-
-  const hasBoy = raw.includes('남아')
-  const hasGirl = raw.includes('여아')
-
-  if (hasBoy && hasGirl) return 'mixed'
-  if (hasBoy) return 'boy'
-  if (hasGirl) return 'girl'
-  return 'neutral'
-}
-
-const getChipToneClass = (tone: ChipTone) => {
-  if (tone === 'boy') return 'border-sky-100 bg-sky-50/45 text-sky-700'
-  if (tone === 'girl') return 'border-pink-100 bg-pink-50/45 text-pink-700'
-  if (tone === 'mixed') return 'border-violet-100 bg-violet-50/45 text-violet-700'
-  return 'border-border/70 bg-muted/30 text-foreground'
 }
 
 const getDateStringInTimeZone = (timeZone: string, baseDate = new Date()) => {
@@ -254,7 +211,7 @@ export function RoomView() {
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const [tab, setTab] = useState<'overview' | 'history'>('overview')
-  const [filter, setFilter] = useState<'All' | 'Prestige' | 'VIP' | 'VVIP' | 'CheckOut'>('All')
+  const [filter, setFilter] = useState<RoomFilter>('All')
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [selectedRoom, setSelectedRoom] = useState<string | null>(null)
   const [detailDialogOpen, setDetailDialogOpen] = useState(false)
@@ -323,40 +280,37 @@ export function RoomView() {
   const kstLabel = todayStr.replace(/-/g, '.')
   const todayBase = parseISO(todayStr)
 
-  const rooms: Room[] = (roomsFromAPI || []).map((room) => {
-    const stay = room.active_stay
+  const rooms: Room[] = (roomsFromAPI || [])
+    .filter((room) => !EXCLUDED_ROOM_NUMBERS.has(room.room_number))
+    .map((room) => {
+      const stay = room.active_stay
 
-    let status: Room['status'] = 'Empty'
-    let checkOutDday: number | undefined
+      let status: Room['status'] = 'Empty'
+      let checkOutDday: number | undefined
 
-    if (stay && stay.status === 'active') {
-      status = 'Occupied'
-      const daysUntilCheckout = differenceInDays(parseISO(stay.check_out_date), todayBase)
-      if (daysUntilCheckout >= 0 && daysUntilCheckout <= 2) {
-        checkOutDday = daysUntilCheckout
+      if (stay && stay.status === 'active') {
+        status = 'Occupied'
+        const daysUntilCheckout = differenceInDays(parseISO(stay.check_out_date), todayBase)
+        if (daysUntilCheckout >= 0 && daysUntilCheckout <= 2) {
+          checkOutDday = daysUntilCheckout
+        }
       }
-    }
 
-    return {
-      id: room.room_number,
-      number: room.room_number,
-      type: room.room_type,
-      status,
-      activeStayId: stay?.id,
-      motherName: stay?.mother_name,
-      babyCount: stay?.baby_count,
-      babyNames: stay?.baby_names,
-      babyProfiles: stay?.baby_profiles || null,
-      gender: stay?.gender,
-      babyWeight: stay?.baby_weight,
-      birthHospital: stay?.birth_hospital,
-      checkInDate: stay?.check_in_date,
-      checkOutDate: stay?.check_out_date,
-      eduDate: stay?.edu_date,
-      checkOutDday,
-      upcomingStays: room.upcoming_stays || []
-    }
-  })
+      return {
+        id: room.room_number,
+        number: room.room_number,
+        type: getRoomTypeByNumber(room.room_number),
+        status,
+        activeStayId: stay?.id,
+        motherName: stay?.mother_name,
+        babyCount: stay?.baby_count,
+        checkInDate: stay?.check_in_date,
+        checkOutDate: stay?.check_out_date,
+        eduDate: stay?.edu_date,
+        checkOutDday,
+        upcomingStays: room.upcoming_stays || []
+      }
+    })
 
   const filteredRooms = rooms.filter((room) => {
     if (filter === 'All') return true
@@ -364,8 +318,8 @@ export function RoomView() {
     return room.type === filter
   })
 
-  const rooms5F = filteredRooms.filter((room) => room.number.startsWith('5'))
-  const rooms6F = filteredRooms.filter((room) => room.number.startsWith('6'))
+  const rooms5F = filteredRooms.filter((room) => getFloorFromRoomNumber(room.number) === '5F')
+  const rooms6F = filteredRooms.filter((room) => getFloorFromRoomNumber(room.number) === '6F')
 
   const activeStays = (roomsFromAPI || [])
     .map((room) => room.active_stay)
@@ -835,8 +789,17 @@ export function RoomView() {
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-36 rounded-2xl" />)}
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-              {[...Array(8)].map((_, i) => <Skeleton key={i} className="h-52 rounded-2xl" />)}
+            <div className="flex flex-col gap-3 rounded-2xl border border-[hsl(var(--fp-border))] bg-[hsl(var(--fp-surface))] p-4">
+              <div className="flex flex-wrap items-center gap-2">
+                {[...Array(5)].map((_, i) => (
+                  <Skeleton key={i} className="h-8 w-20 rounded-full" />
+                ))}
+              </div>
+              <Skeleton className="h-5 w-72 rounded-full" />
+            </div>
+            <div className="space-y-3">
+              <RoomFloorplanSkeleton mode="board" />
+              <RoomFloorplanSkeleton mode="board" />
             </div>
           </div>
         ) : (
@@ -874,29 +837,30 @@ export function RoomView() {
               />
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              {['All', 'Prestige', 'VIP', 'VVIP', 'CheckOut'].map((item) => (
-                <Button
-                  key={item}
-                  variant={filter === item ? 'default' : 'outline'}
-                  size="sm"
-                  className="rounded-full px-4"
-                  onClick={() => setFilter(item as 'All' | 'Prestige' | 'VIP' | 'VVIP' | 'CheckOut')}
-                >
-                  {item === 'All' ? '전체' : item === 'CheckOut' ? '퇴실임박' : item}
-                </Button>
-              ))}
-            </div>
-            {isFinePointerDevice === false && (
+            <div className="flex flex-col gap-3 rounded-2xl border border-[hsl(var(--fp-border))] bg-[hsl(var(--fp-surface))] p-4">
+              <div className="flex flex-wrap gap-2">
+                {ROOM_FILTER_OPTIONS.map((item) => (
+                  <Button
+                    key={item.key}
+                    variant={filter === item.key ? 'default' : 'outline'}
+                    size="sm"
+                    className="rounded-full px-4"
+                    onClick={() => setFilter(item.key)}
+                  >
+                    {item.label}
+                  </Button>
+                ))}
+              </div>
               <p className="text-xs text-muted-foreground">
-                모바일 Safari/Chrome에서는 객실 드래그 이동이 제한됩니다.
+                {isFinePointerDevice === true
+                  ? '한 화면에서 5F/6F를 모두 확인하며 객실 카드를 드래그해 층간 이동/스왑할 수 있습니다.'
+                  : '모바일에서는 드래그 이동이 비활성화되며, 객실 카드를 탭해 상세를 편집합니다.'}
               </p>
-            )}
+            </div>
 
-            {rooms5F.length > 0 && (
-              <RoomFloorSection
-                title="Prestige & VIP"
-                floorLabel="5F"
+            <div className="space-y-4">
+              <RoomFloorplanBoard
+                floor="5F"
                 rooms={rooms5F}
                 allowDrag={isFinePointerDevice === true}
                 onRoomClick={handleRoomClick}
@@ -908,12 +872,9 @@ export function RoomView() {
                 onRoomDrop={handleRoomDrop}
                 onRoomDragEnd={handleRoomDragEnd}
               />
-            )}
 
-            {rooms6F.length > 0 && (
-              <RoomFloorSection
-                title="VIP & VVIP"
-                floorLabel="6F"
+              <RoomFloorplanBoard
+                floor="6F"
                 rooms={rooms6F}
                 allowDrag={isFinePointerDevice === true}
                 onRoomClick={handleRoomClick}
@@ -925,7 +886,19 @@ export function RoomView() {
                 onRoomDrop={handleRoomDrop}
                 onRoomDragEnd={handleRoomDragEnd}
               />
-            )}
+            </div>
+
+            <div className="grid gap-3 lg:grid-cols-[1fr_1.1fr]">
+              <RoomStatusLegend />
+              <section className="rounded-2xl border border-[hsl(var(--fp-border))] bg-[hsl(var(--fp-surface))] p-4">
+                <h4 className="text-sm font-semibold">빠른 안내</h4>
+                <ul className="mt-3 space-y-1 text-xs text-muted-foreground">
+                  <li>객실 카드 클릭 시 기존 상세 편집 시트가 열립니다.</li>
+                  <li>결번 객실(504, 604)은 레이아웃에서 제외되었습니다.</li>
+                  <li>5F와 6F가 한 페이지에 동시에 노출되어 층간 드래그 이동/스왑이 가능합니다.</li>
+                </ul>
+              </section>
+            </div>
           </>
         )}
 
@@ -1108,258 +1081,6 @@ function SecondaryStatCard({
       <CardContent className="px-4 py-3 flex items-center justify-between">
         <span className="text-sm text-muted-foreground">{title}</span>
         <span className="text-2xl font-extrabold">{value}</span>
-      </CardContent>
-    </Card>
-  )
-}
-
-function RoomFloorSection({
-  title,
-  floorLabel,
-  rooms,
-  allowDrag,
-  onRoomClick,
-  draggingRoomNumber,
-  dragOverRoomNumber,
-  isRoomMoving,
-  onRoomDragStart,
-  onRoomDragOver,
-  onRoomDrop,
-  onRoomDragEnd
-}: {
-  title: string
-  floorLabel: string
-  rooms: Room[]
-  allowDrag: boolean
-  onRoomClick: (roomNumber: string) => void
-  draggingRoomNumber: string | null
-  dragOverRoomNumber: string | null
-  isRoomMoving: boolean
-  onRoomDragStart: (room: Room, event: DragEvent<HTMLDivElement>) => void
-  onRoomDragOver: (targetRoomNumber: string, event: DragEvent<HTMLDivElement>) => void
-  onRoomDrop: (targetRoomNumber: string, event: DragEvent<HTMLDivElement>) => void
-  onRoomDragEnd: () => void
-}) {
-  return (
-    <section className="space-y-4">
-      <h3 className="text-xl font-bold flex items-center gap-2">
-        <span className="rounded-full bg-primary/10 text-primary px-3 py-1 text-sm">{floorLabel}</span>
-        <span>{title}</span>
-      </h3>
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        {rooms.map((room) => (
-          <RoomCard
-            key={room.id}
-            room={room}
-            onClick={() => onRoomClick(room.number)}
-            canDrag={allowDrag && Boolean(room.activeStayId)}
-            isDraggingAny={Boolean(draggingRoomNumber)}
-            isDragSource={draggingRoomNumber === room.number}
-            isDragOver={dragOverRoomNumber === room.number}
-            isRoomMoving={isRoomMoving}
-            onDragStart={(event) => onRoomDragStart(room, event)}
-            onDragOver={(event) => onRoomDragOver(room.number, event)}
-            onDrop={(event) => onRoomDrop(room.number, event)}
-            onDragEnd={onRoomDragEnd}
-          />
-        ))}
-      </div>
-    </section>
-  )
-}
-
-function DateTile({
-  label,
-  date,
-  emphasis
-}: {
-  label: string
-  date?: string
-  emphasis?: 'red' | 'yellow'
-}) {
-  return (
-    <div
-      className={cn(
-        'rounded-xl border p-2',
-        emphasis === 'red' && 'border-red-300 bg-red-50/70',
-        emphasis === 'yellow' && 'border-yellow-300 bg-yellow-50/70'
-      )}
-    >
-      <p className="text-[11px] text-muted-foreground">{label}</p>
-      <p className="mt-0.5 text-sm font-semibold">{formatShortDate(date)}</p>
-    </div>
-  )
-}
-
-function InfoChip({
-  label,
-  value,
-  tone = 'neutral'
-}: {
-  label: string
-  value?: string | null
-  tone?: ChipTone
-}) {
-  return (
-    <div className={cn(
-      'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs',
-      getChipToneClass(tone)
-    )}>
-      <span className="opacity-70">{label}</span>
-      <span className="font-medium truncate max-w-[220px]">{value && value.trim() !== '' ? value : '-'}</span>
-    </div>
-  )
-}
-
-function RoomCard({
-  room,
-  onClick,
-  canDrag = false,
-  isDraggingAny = false,
-  isDragSource = false,
-  isDragOver = false,
-  isRoomMoving = false,
-  onDragStart,
-  onDragOver,
-  onDrop,
-  onDragEnd
-}: {
-  room: Room
-  onClick?: () => void
-  canDrag?: boolean
-  isDraggingAny?: boolean
-  isDragSource?: boolean
-  isDragOver?: boolean
-  isRoomMoving?: boolean
-  onDragStart?: (event: DragEvent<HTMLDivElement>) => void
-  onDragOver?: (event: DragEvent<HTMLDivElement>) => void
-  onDrop?: (event: DragEvent<HTMLDivElement>) => void
-  onDragEnd?: () => void
-}) {
-  const hasUpcoming = room.upcomingStays.length > 0
-  const isEmpty = room.status === 'Empty'
-  const nextUpcoming = room.upcomingStays[0]
-  const displayBabies = getDisplayBabies({
-    baby_count: room.babyCount,
-    baby_names: room.babyNames,
-    baby_profiles: room.babyProfiles,
-    gender: room.gender,
-    baby_weight: room.babyWeight
-  })
-  const babyNameValue = getBabyNameSummary(displayBabies)
-  const babyGenderValue = getBabyGenderSummary(displayBabies, room.gender)
-  const babyWeightValue = getBabyWeightSummary(displayBabies)
-  const babyTone = getChipToneFromGender(babyGenderValue)
-
-  const checkoutBadge =
-    room.checkOutDday === 0 ? 'D-Day' :
-    room.checkOutDday === 1 ? 'D-1' :
-    room.checkOutDday === 2 ? 'D-2' :
-    null
-
-  return (
-    <Card
-      draggable={canDrag && !isRoomMoving}
-      onDragStart={onDragStart}
-      onDragOver={onDragOver}
-      onDrop={onDrop}
-      onDragEnd={onDragEnd}
-      onClick={() => {
-        if (isDraggingAny || isRoomMoving) return
-        onClick?.()
-      }}
-      className={cn(
-        'group cursor-pointer border transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md',
-        canDrag && !isRoomMoving && 'cursor-grab active:cursor-grabbing',
-        isDragSource && 'opacity-55 ring-2 ring-primary/30',
-        isDragOver && 'ring-2 ring-blue-300 border-blue-300 bg-blue-50/40',
-        checkoutBadge === 'D-Day' && 'border-red-300 bg-red-50/40',
-        checkoutBadge === 'D-1' && 'border-red-200',
-        checkoutBadge === 'D-2' && 'border-yellow-200',
-        isEmpty && !hasUpcoming && 'border-dashed bg-muted/20'
-      )}
-    >
-      <CardHeader className="pb-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <div className="text-2xl font-black tracking-tight leading-none">{room.number}</div>
-            <Badge variant="secondary">{room.type}</Badge>
-            {canDrag && (
-              <Badge variant="outline" className="h-6 px-2 text-[10px] text-muted-foreground">
-                <GripVertical className="mr-1 h-3 w-3" />
-                드래그 이동
-              </Badge>
-            )}
-          </div>
-          <div className="flex items-center gap-1">
-            <Badge variant={isEmpty ? 'outline' : 'default'}>
-              {isEmpty ? '비어있음' : '입실중'}
-            </Badge>
-            {checkoutBadge && (
-              <Badge className={cn(
-                checkoutBadge === 'D-Day' && 'bg-red-600 text-white',
-                checkoutBadge === 'D-1' && 'bg-red-100 text-red-700 hover:bg-red-100',
-                checkoutBadge === 'D-2' && 'bg-yellow-100 text-yellow-700 hover:bg-yellow-100'
-              )}>
-                {checkoutBadge}
-              </Badge>
-            )}
-          </div>
-        </div>
-      </CardHeader>
-
-      <CardContent className="pt-0">
-        {isEmpty ? (
-          <div className="min-h-[150px] flex flex-col items-center justify-center rounded-xl border border-dashed bg-background/60 px-3 text-center">
-            <BedDouble className="h-5 w-5 text-muted-foreground mb-2" />
-            {!hasUpcoming || !nextUpcoming ? (
-              <p className="text-sm text-muted-foreground">현재 비어있는 객실</p>
-            ) : (
-              <div className="space-y-2 w-full">
-                <p className="text-xs uppercase tracking-wide text-blue-600 font-semibold">다음 입실 예정</p>
-                <p className="text-base font-semibold">{nextUpcoming.mother_name}</p>
-                <div className="flex items-center justify-center gap-2 text-xs">
-                  <Badge variant="outline">입실 {formatShortDate(nextUpcoming.check_in_date)}</Badge>
-                  <Badge variant="outline">퇴실 {formatShortDate(nextUpcoming.check_out_date)}</Badge>
-                </div>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="space-y-3 min-h-[150px]">
-            <div>
-              <p className="text-[11px] text-muted-foreground">산모명</p>
-              <p className="text-lg font-bold leading-tight">{room.motherName}</p>
-            </div>
-
-            <div className="flex flex-wrap gap-1.5">
-              <InfoChip label="태명" value={babyNameValue} tone={babyTone} />
-              <InfoChip label="성별" value={babyGenderValue} tone={babyTone} />
-              <InfoChip label="몸무게" value={babyWeightValue} tone={babyTone} />
-              <InfoChip label="출산병원" value={room.birthHospital} tone="neutral" />
-            </div>
-
-            <div className="grid grid-cols-3 gap-2">
-              <DateTile label="입실일" date={room.checkInDate} />
-              <DateTile
-                label="퇴실일"
-                date={room.checkOutDate}
-                emphasis={
-                  room.checkOutDday === 0 ? 'red'
-                    : room.checkOutDday === 1 || room.checkOutDday === 2 ? 'yellow'
-                    : undefined
-                }
-              />
-              <DateTile label="교육일" date={room.eduDate} />
-            </div>
-
-            {hasUpcoming && nextUpcoming && (
-              <div className="rounded-lg bg-blue-50 border border-blue-200 px-2.5 py-2 text-xs text-blue-700">
-                다음 입실: {nextUpcoming.mother_name} ({formatShortDate(nextUpcoming.check_in_date)})
-              </div>
-            )}
-          </div>
-        )}
       </CardContent>
     </Card>
   )

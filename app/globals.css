@@ -55,7 +55,23 @@
 
     --chart-5: 27 87% 67%;
 
-    --radius: 0.5rem
+    --radius: 0.5rem;
+
+    --fp-bg: 42 31% 95%;
+    --fp-surface: 40 24% 98%;
+    --fp-border: 36 16% 82%;
+    --fp-core: 210 18% 89%;
+
+    --room-occupied-bg: 210 90% 96%;
+    --room-occupied-border: 211 82% 82%;
+    --room-empty-bg: 36 20% 96%;
+    --room-empty-border: 34 16% 80%;
+    --room-upcoming-bg: 204 90% 96%;
+    --room-upcoming-border: 204 88% 82%;
+    --room-checkout-yellow-bg: 47 96% 92%;
+    --room-checkout-yellow-border: 45 88% 72%;
+    --room-checkout-red-bg: 2 95% 94%;
+    --room-checkout-red-border: 2 84% 77%;
   }
   .dark {
 
@@ -105,7 +121,23 @@
 
     --chart-4: 280 65% 60%;
 
-    --chart-5: 340 75% 55%
+    --chart-5: 340 75% 55%;
+
+    --fp-bg: 210 16% 15%;
+    --fp-surface: 210 16% 18%;
+    --fp-border: 210 12% 28%;
+    --fp-core: 210 12% 24%;
+
+    --room-occupied-bg: 213 48% 22%;
+    --room-occupied-border: 213 42% 36%;
+    --room-empty-bg: 210 10% 19%;
+    --room-empty-border: 210 8% 32%;
+    --room-upcoming-bg: 206 46% 21%;
+    --room-upcoming-border: 206 38% 36%;
+    --room-checkout-yellow-bg: 40 36% 22%;
+    --room-checkout-yellow-border: 40 32% 36%;
+    --room-checkout-red-bg: 0 44% 22%;
+    --room-checkout-red-border: 0 37% 36%;
   }
 }
 
