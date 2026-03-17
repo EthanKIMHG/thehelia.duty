@@ -50,6 +50,7 @@ export function RoomListView({
           isDragSource={draggingRoomNumber === room.number}
           isDragOver={dragOverRoomNumber === room.number}
           isRoomMoving={isRoomMoving}
+          className="aspect-auto min-h-[188px] sm:min-h-[210px]"
           onDragStart={(event) => onRoomDragStart(room, event)}
           onDragOver={(event) => onRoomDragOver(room.number, event)}
           onDrop={(event) => onRoomDrop(room.number, event)}

@@ -3,12 +3,15 @@
 import { AppConfirmDialog } from '@/components/app-confirm-dialog'
 import {
   EXCLUDED_ROOM_NUMBERS,
+  FloorSwitch,
   getFloorFromRoomNumber,
   getRoomTypeByNumber,
   RoomFloorplanBoard,
   RoomFloorplanSkeleton,
+  RoomListView,
   RoomStatusLegend,
   ROOM_FILTER_OPTIONS,
+  type FloorKey,
   type FloorplanRoom,
   type RoomFilter,
 } from '@/components/room-floorplan'
@@ -115,6 +118,7 @@ type StatCardType =
   | 'tomorrowCheckOut'
 
 const FINE_POINTER_MEDIA_QUERY = '(any-pointer: fine) and (any-hover: hover)'
+const MOBILE_MEDIA_QUERY = '(max-width: 767px)'
 
 const dedupeByStayId = (stays: Stay[]) => {
   const seen = new Set<string>()
@@ -238,9 +242,15 @@ export function RoomView() {
   const [showTodayNotice, setShowTodayNotice] = useState(true)
   const [draggingRoomNumber, setDraggingRoomNumber] = useState<string | null>(null)
   const [dragOverRoomNumber, setDragOverRoomNumber] = useState<string | null>(null)
+  const [selectedMobileFloor, setSelectedMobileFloor] = useState<FloorKey>('5F')
+  const [showMobileFloorplan, setShowMobileFloorplan] = useState(false)
   const [isFinePointerDevice, setIsFinePointerDevice] = useState<boolean | null>(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return null
     return window.matchMedia(FINE_POINTER_MEDIA_QUERY).matches
+  })
+  const [isMobileViewport, setIsMobileViewport] = useState<boolean>(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false
+    return window.matchMedia(MOBILE_MEDIA_QUERY).matches
   })
   const [pendingRoomTransfer, setPendingRoomTransfer] = useState<PendingRoomTransfer | null>(null)
   const [isTransferConfirmOpen, setIsTransferConfirmOpen] = useState(false)
@@ -253,18 +263,36 @@ export function RoomView() {
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
 
-    const mediaQuery = window.matchMedia(FINE_POINTER_MEDIA_QUERY)
-    const update = () => setIsFinePointerDevice(mediaQuery.matches)
+    const finePointerMediaQuery = window.matchMedia(FINE_POINTER_MEDIA_QUERY)
+    const mobileMediaQuery = window.matchMedia(MOBILE_MEDIA_QUERY)
+    const update = () => {
+      setIsFinePointerDevice(finePointerMediaQuery.matches)
+      setIsMobileViewport(mobileMediaQuery.matches)
+    }
     update()
 
-    if (typeof mediaQuery.addEventListener === 'function') {
-      mediaQuery.addEventListener('change', update)
-      return () => mediaQuery.removeEventListener('change', update)
+    if (typeof finePointerMediaQuery.addEventListener === 'function') {
+      finePointerMediaQuery.addEventListener('change', update)
+      mobileMediaQuery.addEventListener('change', update)
+      return () => {
+        finePointerMediaQuery.removeEventListener('change', update)
+        mobileMediaQuery.removeEventListener('change', update)
+      }
     }
 
-    mediaQuery.addListener(update)
-    return () => mediaQuery.removeListener(update)
+    finePointerMediaQuery.addListener(update)
+    mobileMediaQuery.addListener(update)
+    return () => {
+      finePointerMediaQuery.removeListener(update)
+      mobileMediaQuery.removeListener(update)
+    }
   }, [])
+
+  useEffect(() => {
+    if (!isMobileViewport) {
+      setShowMobileFloorplan(false)
+    }
+  }, [isMobileViewport])
 
   const { data: roomsFromAPI, isLoading } = useQuery<RoomFromAPI[]>({
     queryKey: ['rooms'],
@@ -343,6 +371,7 @@ export function RoomView() {
 
   const rooms5F = filteredRooms.filter((room) => getFloorFromRoomNumber(room.number) === '5F')
   const rooms6F = filteredRooms.filter((room) => getFloorFromRoomNumber(room.number) === '6F')
+  const mobileFloorRooms = selectedMobileFloor === '5F' ? rooms5F : rooms6F
 
   const activeStays = (roomsFromAPI || [])
     .map((room) => room.active_stay)
@@ -821,8 +850,17 @@ export function RoomView() {
               <Skeleton className="h-5 w-72 rounded-full" />
             </div>
             <div className="space-y-3">
-              <RoomFloorplanSkeleton mode="board" />
-              <RoomFloorplanSkeleton mode="board" />
+              {isMobileViewport ? (
+                <>
+                  <RoomFloorplanSkeleton mode="list" />
+                  <RoomFloorplanSkeleton mode="board" />
+                </>
+              ) : (
+                <>
+                  <RoomFloorplanSkeleton mode="board" />
+                  <RoomFloorplanSkeleton mode="board" />
+                </>
+              )}
             </div>
           </div>
         ) : (
@@ -875,41 +913,97 @@ export function RoomView() {
                 ))}
               </div>
               <p className="text-xs text-muted-foreground">
-                {isFinePointerDevice === true
+                {isMobileViewport
+                  ? '모바일에서는 층별 객실 목록을 먼저 보여주고, 평면도는 필요할 때 펼쳐 확인할 수 있습니다.'
+                  : isFinePointerDevice === true
                   ? '한 화면에서 5F/6F를 모두 확인하며 객실 카드를 드래그해 층간 이동/스왑할 수 있습니다.'
                   : '모바일에서는 드래그 이동이 비활성화되며, 객실 카드를 탭해 상세를 편집합니다.'}
               </p>
             </div>
 
-            <div className="space-y-4">
-              <RoomFloorplanBoard
-                floor="5F"
-                rooms={rooms5F}
-                allowDrag={isFinePointerDevice === true}
-                onRoomClick={handleRoomClick}
-                draggingRoomNumber={draggingRoomNumber}
-                dragOverRoomNumber={dragOverRoomNumber}
-                isRoomMoving={roomTransferMutation.isPending}
-                onRoomDragStart={handleRoomDragStart}
-                onRoomDragOver={handleRoomDragOver}
-                onRoomDrop={handleRoomDrop}
-                onRoomDragEnd={handleRoomDragEnd}
-              />
+            {isMobileViewport ? (
+              <section className="space-y-4 rounded-2xl border border-[hsl(var(--fp-border))] bg-[hsl(var(--fp-surface))] p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="space-y-1">
+                    <h4 className="text-sm font-semibold">모바일 객실 목록</h4>
+                    <p className="text-xs text-muted-foreground">
+                      목록에서 객실을 선택해 상세를 수정하고, 평면도는 보조로 확인합니다.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="rounded-full"
+                    onClick={() => setShowMobileFloorplan((prev) => !prev)}
+                  >
+                    {showMobileFloorplan ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    {showMobileFloorplan ? '평면도 접기' : '평면도 펼치기'}
+                  </Button>
+                </div>
 
-              <RoomFloorplanBoard
-                floor="6F"
-                rooms={rooms6F}
-                allowDrag={isFinePointerDevice === true}
-                onRoomClick={handleRoomClick}
-                draggingRoomNumber={draggingRoomNumber}
-                dragOverRoomNumber={dragOverRoomNumber}
-                isRoomMoving={roomTransferMutation.isPending}
-                onRoomDragStart={handleRoomDragStart}
-                onRoomDragOver={handleRoomDragOver}
-                onRoomDrop={handleRoomDrop}
-                onRoomDragEnd={handleRoomDragEnd}
-              />
-            </div>
+                <FloorSwitch value={selectedMobileFloor} onChange={setSelectedMobileFloor} />
+
+                <RoomListView
+                  rooms={mobileFloorRooms}
+                  allowDrag={false}
+                  onRoomClick={handleRoomClick}
+                  draggingRoomNumber={draggingRoomNumber}
+                  dragOverRoomNumber={dragOverRoomNumber}
+                  isRoomMoving={roomTransferMutation.isPending}
+                  onRoomDragStart={handleRoomDragStart}
+                  onRoomDragOver={handleRoomDragOver}
+                  onRoomDrop={handleRoomDrop}
+                  onRoomDragEnd={handleRoomDragEnd}
+                />
+
+                {showMobileFloorplan && (
+                  <RoomFloorplanBoard
+                    floor={selectedMobileFloor}
+                    rooms={mobileFloorRooms}
+                    allowDrag={false}
+                    onRoomClick={handleRoomClick}
+                    draggingRoomNumber={draggingRoomNumber}
+                    dragOverRoomNumber={dragOverRoomNumber}
+                    isRoomMoving={roomTransferMutation.isPending}
+                    onRoomDragStart={handleRoomDragStart}
+                    onRoomDragOver={handleRoomDragOver}
+                    onRoomDrop={handleRoomDrop}
+                    onRoomDragEnd={handleRoomDragEnd}
+                  />
+                )}
+              </section>
+            ) : (
+              <div className="space-y-4">
+                <RoomFloorplanBoard
+                  floor="5F"
+                  rooms={rooms5F}
+                  allowDrag={isFinePointerDevice === true}
+                  onRoomClick={handleRoomClick}
+                  draggingRoomNumber={draggingRoomNumber}
+                  dragOverRoomNumber={dragOverRoomNumber}
+                  isRoomMoving={roomTransferMutation.isPending}
+                  onRoomDragStart={handleRoomDragStart}
+                  onRoomDragOver={handleRoomDragOver}
+                  onRoomDrop={handleRoomDrop}
+                  onRoomDragEnd={handleRoomDragEnd}
+                />
+
+                <RoomFloorplanBoard
+                  floor="6F"
+                  rooms={rooms6F}
+                  allowDrag={isFinePointerDevice === true}
+                  onRoomClick={handleRoomClick}
+                  draggingRoomNumber={draggingRoomNumber}
+                  dragOverRoomNumber={dragOverRoomNumber}
+                  isRoomMoving={roomTransferMutation.isPending}
+                  onRoomDragStart={handleRoomDragStart}
+                  onRoomDragOver={handleRoomDragOver}
+                  onRoomDrop={handleRoomDrop}
+                  onRoomDragEnd={handleRoomDragEnd}
+                />
+              </div>
+            )}
 
             <div className="grid gap-3 lg:grid-cols-[1fr_1.1fr]">
               <RoomStatusLegend />
@@ -918,7 +1012,11 @@ export function RoomView() {
                 <ul className="mt-3 space-y-1 text-xs text-muted-foreground">
                   <li>객실 카드 클릭 시 기존 상세 편집 시트가 열립니다.</li>
                   <li>결번 객실(504, 604)은 레이아웃에서 제외되었습니다.</li>
-                  <li>5F와 6F가 한 페이지에 동시에 노출되어 층간 드래그 이동/스왑이 가능합니다.</li>
+                  <li>
+                    {isMobileViewport
+                      ? '모바일은 층별 객실 목록이 기본이며, 평면도는 펼치기 버튼으로 보조 확인할 수 있습니다.'
+                      : '5F와 6F가 한 페이지에 동시에 노출되어 층간 드래그 이동/스왑이 가능합니다.'}
+                  </li>
                 </ul>
               </section>
             </div>

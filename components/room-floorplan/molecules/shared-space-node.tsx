@@ -33,7 +33,7 @@ export function SharedSpaceNode({ icon, title, description, className }: SharedS
             </span>
             <div className="mt-3">
               <p className="text-base font-bold text-foreground">{title}</p>
-              <p className="mt-1 max-h-[2.8em] overflow-hidden text-xs leading-relaxed text-muted-foreground">{description}</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{description}</p>
               <p className="mt-2 text-[11px] font-medium text-muted-foreground">터치하여 정보 보기</p>
             </div>
           </div>
