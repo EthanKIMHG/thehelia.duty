@@ -28,13 +28,13 @@ export function SharedSpaceNode({ icon, title, description, className }: SharedS
               className,
             )}
           >
-            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[hsl(var(--fp-border))] bg-[hsl(var(--fp-surface))] text-foreground">
+            <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[hsl(var(--fp-border))] bg-[hsl(var(--fp-surface))] text-foreground">
               {icon}
             </span>
             <div className="mt-3">
-              <p className="text-base font-bold text-foreground">{title}</p>
-              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{description}</p>
-              <p className="mt-2 text-[11px] font-medium text-muted-foreground">터치하여 정보 보기</p>
+              <p className="text-lg font-bold text-foreground md:text-xl">{title}</p>
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{description}</p>
+              <p className="mt-2 text-xs font-medium text-muted-foreground">터치하여 정보 보기</p>
             </div>
           </div>
         </TooltipTrigger>

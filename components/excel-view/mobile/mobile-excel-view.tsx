@@ -248,7 +248,7 @@ export function MobileExcelView({ staffData }: MobileExcelViewProps) {
             employmentLabel: getEmploymentLabel(staff.employment_type),
             dutyCode,
           })
-          if (parsed.otPosition === 'pre' && parsed.otHours >= 2) {
+          if (parsed.otPreHours >= 2) {
             eAssigned += 1
           }
           return

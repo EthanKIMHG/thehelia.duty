@@ -677,8 +677,11 @@ function getReadableShiftLabel(shift: string) {
 function getReadableShiftDetail(shift: string) {
   const parsed = parseShift(shift)
   if (!parsed.otHours) return ''
-  if (parsed.otPosition === 'pre') return `근무 전 연장 ${parsed.otHours}시간 포함`
-  if (parsed.otPosition === 'post') return `근무 후 연장 ${parsed.otHours}시간 포함`
+  if (parsed.otPreHours > 0 && parsed.otPostHours > 0) {
+    return `근무 전 연장 ${parsed.otPreHours}시간 + 근무 후 연장 ${parsed.otPostHours}시간 포함`
+  }
+  if (parsed.otPreHours > 0) return `근무 전 연장 ${parsed.otPreHours}시간 포함`
+  if (parsed.otPostHours > 0) return `근무 후 연장 ${parsed.otPostHours}시간 포함`
   return ''
 }
 

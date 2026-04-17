@@ -28,6 +28,7 @@ interface ScheduleGridProps {
   dailyWarnings?: DailyWarningMap
   wantedOffStats?: Map<string, Set<string>>
   onReorderStaffMembers?: (orderedIds: string[]) => Promise<void> | void
+  compactLayout?: boolean
 }
 
 type SummaryShiftKey = 'D' | 'E' | 'N' | 'M' | 'DE' | '/' | 'A'
@@ -59,7 +60,8 @@ export function ScheduleGrid({
   onCellClick,
   dailyWarnings,
   wantedOffStats,
-  onReorderStaffMembers
+  onReorderStaffMembers,
+  compactLayout = false
 }: ScheduleGridProps) {
   const { toast } = useToast()
   const [hoveredRow, setHoveredRow] = useState<string | null>(null)
@@ -182,21 +184,24 @@ export function ScheduleGrid({
   }
 
   return (
-    <div className="border rounded-md bg-card text-card-foreground shadow-sm relative">
+    <div className="relative rounded-lg border bg-card text-card-foreground shadow-sm">
       <div
         ref={scrollContainerRef}
-        className="max-h-[calc(100vh-16rem)] min-h-[420px] overflow-auto overscroll-contain"
+        className={cn(
+          'min-h-[420px] overflow-auto overscroll-contain',
+          compactLayout ? 'max-h-[calc(100vh-10.5rem)]' : 'max-h-[calc(100vh-16rem)]'
+        )}
       >
-      <table className="w-full caption-bottom text-sm">
+      <table className="w-full caption-bottom text-[15px]">
         <TableHeader>
           
           <TableRow>
-            <TableHead className="h-12 min-w-[220px] w-[220px] sticky left-0 top-0 bg-background z-50 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+            <TableHead className="h-14 min-w-[252px] w-[252px] sticky left-0 top-0 bg-background px-3 text-sm font-semibold z-50 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
               이름 (직종) / 날짜
             </TableHead>
             {dates.map((dateObj, i) => {
               if (!dateObj.isValid) {
-                 return <TableHead key={i} className="h-12 min-w-[40px] p-1 bg-muted sticky top-0 z-40" />
+                 return <TableHead key={i} className="h-14 min-w-[52px] bg-muted sticky top-0 z-40" />
               }
               const date = dateObj.date
               const dateStr = format(date, 'd')
@@ -207,21 +212,21 @@ export function ScheduleGrid({
               const isMonthBoundary = i > 0 && dates[i - 1]?.isCurrentMonth !== dateObj.isCurrentMonth
               return (
                 <TableHead key={dateObj.dateStr} className={cn(
-                  "h-12 text-center min-w-[40px] p-1 text-xs sticky top-0 z-40 bg-background",
+                  "h-14 min-w-[52px] p-1.5 text-center text-sm font-semibold sticky top-0 z-40 bg-background",
                   isWeekend && "bg-orange-50 text-orange-700",
                   isToday && "bg-sky-100 text-sky-700 font-bold",
                   isOutOfMonthCol && "bg-slate-100 text-slate-700",
                   isMonthBoundary && "border-l-2 border-l-slate-400"
                 )}>
                   <div>{dateStr}</div>
-                  <div className={cn("font-normal text-[10px]", isToday && "font-bold")}>{dayStr}</div>
+                  <div className={cn("font-normal text-[11px]", isToday && "font-bold")}>{dayStr}</div>
                 </TableHead>
               )
             })}
             {/* Stats Columns */}
-            <TableHead className="h-12 text-center min-w-[50px] text-xs font-bold border-l sticky top-0 z-40 bg-background">근무</TableHead>
-            <TableHead className="h-12 text-center min-w-[50px] text-xs font-bold border-l sticky top-0 z-40 bg-background">휴무</TableHead>
-            <TableHead className="h-12 text-center min-w-[50px] text-xs font-bold border-l sticky top-0 z-40 bg-background">OT</TableHead>
+            <TableHead className="h-14 min-w-[60px] border-l text-center text-sm font-bold sticky top-0 z-40 bg-background">근무</TableHead>
+            <TableHead className="h-14 min-w-[60px] border-l text-center text-sm font-bold sticky top-0 z-40 bg-background">휴무</TableHead>
+            <TableHead className="h-14 min-w-[60px] border-l text-center text-sm font-bold sticky top-0 z-40 bg-background">OT</TableHead>
           </TableRow>
           
 
@@ -230,21 +235,21 @@ export function ScheduleGrid({
           {/* Newborn Status Row */}
           {dailyWarnings && dailyWarnings.size > 0 && (
             <TableRow className="hover:bg-muted border-b-2 border-sky-200">
-              <TableCell className="min-w-[220px] w-[220px] sticky left-0 top-12 bg-background z-40 font-bold text-center shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+              <TableCell className="min-w-[252px] w-[252px] sticky left-0 top-14 bg-background z-40 font-bold text-center shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                 <div className="flex items-center justify-center gap-1">
-                  <span className="text-xs">👶 신생아 현황</span>
+                  <span className="text-sm font-semibold">👶 신생아 현황</span>
                 </div>
               </TableCell>
               {dates.map((dateObj, i) => {
                 if (!dateObj.isValid) {
-                  return <TableCell key={i} className="p-0 border-l bg-muted sticky top-12 z-30" />
+                  return <TableCell key={i} className="p-0 border-l bg-muted sticky top-14 z-30" />
                 }
 
                 const data = dailyWarnings.get(dateObj.dateStr)
                 const isOutOfMonthCol = !dateObj.isCurrentMonth
                 const isMonthBoundary = i > 0 && dates[i - 1]?.isCurrentMonth !== dateObj.isCurrentMonth
                 if (!data) return <TableCell key={dateObj.dateStr} className={cn(
-                  "border-l sticky top-12 z-30 bg-background",
+                  "border-l sticky top-14 z-30 bg-background",
                   isOutOfMonthCol && "bg-slate-100",
                   isMonthBoundary && "border-l-2 border-l-slate-300"
                 )} />
@@ -254,7 +259,7 @@ export function ScheduleGrid({
 
                 return (
                   <TableCell key={dateObj.dateStr} className={cn(
-                    "p-1 text-center border-l relative sticky top-12 z-30 bg-background",
+                    "p-1.5 text-center border-l relative sticky top-14 z-30 bg-background",
                     isTodayCol && "bg-sky-50",
                     isOutOfMonthCol && "bg-slate-100",
                     isMonthBoundary && "border-l-2 border-l-slate-300"
@@ -268,12 +273,12 @@ export function ScheduleGrid({
                         <TooltipTrigger asChild>
                           <div className="flex flex-col items-center justify-center cursor-help">
                             {/* PM Count (Main) */}
-                            <div className="text-sm font-bold leading-tight">
+                            <div className="text-base font-bold leading-tight">
                               {data.newborns}
                             </div>
                             
                             {/* Flow (In/Out) */}
-                            <div className="flex gap-1 text-[9px] font-medium leading-none mt-0.5">
+                            <div className="mt-0.5 flex gap-1 text-[10px] font-medium leading-none">
                               {(data.checkins > 0 || data.checkouts > 0) ? (
                                 <>
                                   <span className={cn(data.checkins > 0 ? "text-blue-600" : "text-slate-300")}>
@@ -312,9 +317,9 @@ export function ScheduleGrid({
                 )
               })}
               {/* Empty stats columns */}
-              <TableCell className="border-l bg-muted sticky top-12 z-30" />
-              <TableCell className="border-l bg-muted sticky top-12 z-30" />
-              <TableCell className="border-l bg-muted sticky top-12 z-30" />
+              <TableCell className="border-l bg-muted sticky top-14 z-30" />
+              <TableCell className="border-l bg-muted sticky top-14 z-30" />
+              <TableCell className="border-l bg-muted sticky top-14 z-30" />
             </TableRow>
           )}
           {orderedStaffMembers.map((staff) => (
@@ -356,15 +361,15 @@ export function ScheduleGrid({
               onMouseLeave={() => setHoveredRow(null)}
             >
               <TableCell 
-                className="font-medium min-w-[220px] w-[220px] sticky left-0 bg-background z-30 group-hover:bg-muted transition-colors shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] cursor-pointer hover:bg-muted"
+                className="min-w-[252px] w-[252px] sticky left-0 bg-background z-30 font-medium group-hover:bg-muted transition-colors shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] cursor-pointer hover:bg-muted"
                 onClick={() => handleStaffClick(staff)}
               >
-                  <div className="flex items-center gap-2 w-full px-2 h-full">
+                  <div className="flex h-full w-full items-center gap-3 px-3 py-2">
                         <Button
                           type="button"
                           variant="ghost"
                           size="icon"
-                          className="h-6 w-6 shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground"
+                          className="h-7 w-7 shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground"
                           onMouseDown={(e) => {
                             e.stopPropagation()
                             setDragHandleStaffId(staff.id)
@@ -380,14 +385,14 @@ export function ScheduleGrid({
                         >
                           <GripVertical className="h-4 w-4" />
                         </Button>
-                        <Avatar className="h-6 w-6 shrink-0">
-                            <AvatarFallback className="text-[10px] bg-sky-100 text-sky-700">
+                        <Avatar className="h-7 w-7 shrink-0">
+                            <AvatarFallback className="bg-sky-100 text-xs text-sky-700">
                                 {staff.name[0]}
                             </AvatarFallback>
                         </Avatar>
                         <div className="flex flex-1 min-w-0 flex-col overflow-hidden">
-                            <span className="text-sm leading-none whitespace-nowrap overflow-hidden text-ellipsis">{staff.name}</span>
-                            <span className="text-[10px] text-muted-foreground whitespace-nowrap">{staff.role === 'Nurse' ? '간호사' : '조무사'}</span>
+                            <span className="truncate whitespace-nowrap text-base font-medium leading-none">{staff.name}</span>
+                            <span className="whitespace-nowrap text-xs text-muted-foreground">{staff.role === 'Nurse' ? '간호사' : '조무사'}</span>
                         </div>
                     </div>
               </TableCell>
@@ -419,7 +424,7 @@ export function ScheduleGrid({
                         <TooltipProvider delayDuration={0}>
                             <Tooltip>
                                 <TooltipTrigger asChild>
-                                    <div className="h-10 w-full flex items-center justify-center bg-red-100 text-red-400 font-medium text-xs cursor-not-allowed select-none">
+                                    <div className="flex h-11 w-full items-center justify-center bg-red-100 text-sm font-medium text-red-400 cursor-not-allowed select-none">
                                         <div className="bg-red-200 rounded-full p-1">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
                                         </div>
@@ -443,13 +448,13 @@ export function ScheduleGrid({
               })}
 
                {/* Stats Data */}
-               <TableCell className="text-center text-xs border-l bg-muted font-medium">
+               <TableCell className="h-11 border-l bg-muted text-center text-sm font-semibold">
                   {staff.stats.workDays}
                </TableCell>
-               <TableCell className="text-center text-xs border-l bg-muted font-medium">
+               <TableCell className="h-11 border-l bg-muted text-center text-sm font-semibold">
                   {staff.stats.offDays}
                </TableCell>
-               <TableCell className="text-center text-xs border-l bg-muted font-medium">
+               <TableCell className="h-11 border-l bg-muted text-center text-sm font-semibold">
                   {staff.stats.totalOT > 0 ? staff.stats.totalOT : '-'}
                </TableCell>
 
@@ -463,9 +468,9 @@ export function ScheduleGrid({
                 <TableCell colSpan={dates.length + 4} className="p-0 h-3 bg-orange-50" />
               </TableRow>
               <TableRow className="hover:bg-muted">
-                <TableCell className="min-w-[220px] w-[220px] sticky left-0 bg-background z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                <TableCell className="min-w-[252px] w-[252px] sticky left-0 bg-background z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                   <div className="flex items-center justify-center">
-                    <span className="inline-flex items-center justify-center h-6 px-1.5 rounded text-[10px] font-bold bg-orange-500 text-white whitespace-nowrap">
+                    <span className="inline-flex h-7 items-center justify-center rounded bg-orange-500 px-2 text-xs font-bold text-white whitespace-nowrap">
                       ⚠ 인력
                     </span>
                   </div>
@@ -514,7 +519,7 @@ export function ScheduleGrid({
                     <TableCell
                       key={dateObj.dateStr}
                       className={cn(
-                        "text-center text-[10px] p-0.5 border-l font-bold",
+                        "border-l p-1 text-center text-xs font-bold",
                         bgColor, textColor,
                         isTodayCol && "ring-1 ring-inset ring-sky-300",
                         isMonthBoundary && "border-l-2 border-l-slate-300"
@@ -524,14 +529,14 @@ export function ScheduleGrid({
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <div className="cursor-help leading-tight">
-                              <div className="flex justify-center gap-px text-[9px]">
+                              <div className="flex justify-center gap-px text-[11px]">
                                 <span className={warning.dDiff < 0 ? 'text-red-600' : warning.dDiff === 0 ? 'text-yellow-600' : 'text-green-600'}>{shiftLabel(warning.dDiff)}</span>
                                 <span className="text-slate-300">/</span>
                                 <span className={warning.eDiff < 0 ? 'text-red-600' : warning.eDiff === 0 ? 'text-yellow-600' : 'text-green-600'}>{shiftLabel(warning.eDiff)}</span>
                                 <span className="text-slate-300">/</span>
                                 <span className={warning.nDiff < 0 ? 'text-red-600' : warning.nDiff === 0 ? 'text-yellow-600' : 'text-green-600'}>{shiftLabel(warning.nDiff)}</span>
                               </div>
-                              <div className="text-[8px] font-normal text-slate-500">{warning.newborns}명</div>
+                              <div className="text-[10px] font-normal text-slate-500">{warning.newborns}명</div>
                             </div>
                           </TooltipTrigger>
                           <TooltipContent side="bottom" className="text-xs space-y-1.5 min-w-[160px]">
@@ -569,10 +574,10 @@ export function ScheduleGrid({
           </TableRow>
           {SUMMARY_SHIFT_TYPES.map(({ key, label, color }) => (
               <TableRow key={key} className="hover:bg-muted">
-                <TableCell className="min-w-[220px] w-[220px] sticky left-0 bg-background z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                <TableCell className="min-w-[252px] w-[252px] sticky left-0 bg-background z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                   <div className="flex items-center justify-center">
                     <span className={cn(
-                      "inline-flex items-center justify-center h-6 w-8 rounded text-xs font-bold",
+                      "inline-flex h-7 w-9 items-center justify-center rounded text-sm font-bold",
                       color
                     )}>
                       {label}
@@ -593,7 +598,7 @@ export function ScheduleGrid({
                     <TableCell 
                       key={dateObj.dateStr} 
                       className={cn(
-                        "text-center text-xs p-1 border-l font-medium",
+                        "border-l p-1 text-center text-sm font-semibold",
                         count > 0 ? "text-foreground" : "text-slate-400",
                         isTodayCol && "bg-sky-100",
                         isOutOfMonthCol && "bg-slate-100",
@@ -634,16 +639,16 @@ function ShiftCell({ shift, staffId, dateStr, onSelect }: {
 }) {
     const [open, setOpen] = useState(false)
     const [selectedType, setSelectedType] = useState('D')
-    const [otHours, setOtHours] = useState(0)
-    const [otPos, setOtPos] = useState<'pre' | 'post'>('pre')
+    const [preOtHours, setPreOtHours] = useState(0)
+    const [postOtHours, setPostOtHours] = useState(0)
 
     // Parse current shift when opening
     useEffect(() => {
         if (open) {
             const parsed = parseShift(shift)
             setSelectedType(parsed.type)
-            setOtHours(parsed.otHours)
-            setOtPos(parsed.otPosition === 'none' ? 'pre' : parsed.otPosition)
+            setPreOtHours(parsed.otPreHours)
+            setPostOtHours(parsed.otPostHours)
         }
     }, [open, shift])
 
@@ -660,15 +665,21 @@ function ShiftCell({ shift, staffId, dateStr, onSelect }: {
 
     const handleApply = () => {
         let finalShift = selectedType
-        if (selectedType !== '/' && otHours > 0) {
-            if (otPos === 'pre') finalShift = `${otHours}+${selectedType}`
-            else finalShift = `${selectedType}+${otHours}`
+        if (selectedType !== '/') {
+            if (preOtHours > 0 && postOtHours > 0) {
+                finalShift = `${preOtHours}+${selectedType}+${postOtHours}`
+            } else if (preOtHours > 0) {
+                finalShift = `${preOtHours}+${selectedType}`
+            } else if (postOtHours > 0) {
+                finalShift = `${selectedType}+${postOtHours}`
+            }
         }
         onSelect(staffId, dateStr, finalShift)
         setOpen(false)
         
         // Reset
-        setOtHours(0)
+        setPreOtHours(0)
+        setPostOtHours(0)
     }
 
     return (
@@ -676,7 +687,7 @@ function ShiftCell({ shift, staffId, dateStr, onSelect }: {
             <PopoverTrigger asChild>
                 <div 
                     className={cn(
-                    "h-10 w-full flex items-center justify-center cursor-pointer hover:brightness-95 transition-all text-xs font-bold select-none truncate px-1",
+                    "flex h-11 w-full items-center justify-center truncate px-1 text-sm font-semibold cursor-pointer select-none transition-all hover:brightness-95",
                     getShiftColor(shift)
                     )}
                 >
@@ -708,50 +719,58 @@ function ShiftCell({ shift, staffId, dateStr, onSelect }: {
                     {selectedType !== '/' && (
                         <div className="space-y-2">
                              <Label className="text-xs font-semibold">추가 근무 (OT)</Label>
-                             <div className="flex items-center gap-2">
-                                <Button 
-                                    variant={otPos === 'pre' ? 'default' : 'outline'} 
-                                    size="sm" 
-                                    className="h-8 text-xs"
-                                    onClick={() => setOtPos('pre')}
-                                >
-                                    전
-                                </Button>
-                                <div className="flex items-center border rounded-md">
-                                    <Button 
-                                        variant="ghost" 
-                                        size="icon" 
-                                        className="h-8 w-8 rounded-none"
-                                        onClick={() => setOtHours(Math.max(0, otHours - 1))}
-                                    >
-                                        -
-                                    </Button>
-                                    <div className="w-8 text-center text-sm font-bold">{otHours}</div>
-                                    <Button 
-                                        variant="ghost" 
-                                        size="icon" 
-                                        className="h-8 w-8 rounded-none"
-                                        onClick={() => setOtHours(otHours + 1)}
-                                    >
-                                        +
-                                    </Button>
+                             <div className="grid gap-2">
+                                <div className="flex items-center justify-between rounded-md border px-2 py-1">
+                                    <span className="text-xs font-medium text-muted-foreground">근무 전</span>
+                                    <div className="flex items-center border rounded-md">
+                                        <Button 
+                                            variant="ghost" 
+                                            size="icon" 
+                                            className="h-8 w-8 rounded-none"
+                                            onClick={() => setPreOtHours(Math.max(0, preOtHours - 1))}
+                                        >
+                                            -
+                                        </Button>
+                                        <div className="w-8 text-center text-sm font-bold">{preOtHours}</div>
+                                        <Button 
+                                            variant="ghost" 
+                                            size="icon" 
+                                            className="h-8 w-8 rounded-none"
+                                            onClick={() => setPreOtHours(preOtHours + 1)}
+                                        >
+                                            +
+                                        </Button>
+                                    </div>
                                 </div>
-                                <Button 
-                                    variant={otPos === 'post' ? 'default' : 'outline'} 
-                                    size="sm" 
-                                    className="h-8 text-xs"
-                                    onClick={() => setOtPos('post')}
-                                >
-                                    후
-                                </Button>
+
+                                <div className="flex items-center justify-between rounded-md border px-2 py-1">
+                                    <span className="text-xs font-medium text-muted-foreground">근무 후</span>
+                                    <div className="flex items-center border rounded-md">
+                                        <Button 
+                                            variant="ghost" 
+                                            size="icon" 
+                                            className="h-8 w-8 rounded-none"
+                                            onClick={() => setPostOtHours(Math.max(0, postOtHours - 1))}
+                                        >
+                                            -
+                                        </Button>
+                                        <div className="w-8 text-center text-sm font-bold">{postOtHours}</div>
+                                        <Button 
+                                            variant="ghost" 
+                                            size="icon" 
+                                            className="h-8 w-8 rounded-none"
+                                            onClick={() => setPostOtHours(postOtHours + 1)}
+                                        >
+                                            +
+                                        </Button>
+                                    </div>
+                                </div>
                              </div>
                              <div className="text-xs text-muted-foreground text-center">
-                                {otHours > 0 
-                                    ? otPos === 'pre' 
-                                        ? `${otHours}시간 + ${selectedType}` 
-                                        : `${selectedType} + ${otHours}시간`
-                                    : '추가 근무 없음'
-                                }
+                                {preOtHours > 0 && postOtHours > 0 && `${preOtHours}+${selectedType}+${postOtHours}`}
+                                {preOtHours > 0 && postOtHours === 0 && `${preOtHours}+${selectedType}`}
+                                {preOtHours === 0 && postOtHours > 0 && `${selectedType}+${postOtHours}`}
+                                {preOtHours === 0 && postOtHours === 0 && '추가 근무 없음'}
                              </div>
                         </div>
                     )}

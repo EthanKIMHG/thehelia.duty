@@ -6,6 +6,7 @@ import { useToast } from '@/hooks/use-toast'
 import { authFetch } from '@/lib/api'
 import { generateAutoSchedule } from '@/lib/auto-scheduler'
 import { calculateMonthlyStats, parseShift } from '@/lib/shift-utils'
+import { cn } from '@/lib/utils'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { Download, Upload, UserPlus, Wand2 } from 'lucide-react'
@@ -286,7 +287,11 @@ const parseScheduleCsv = (rows: string[][], monthStr: string): ParsedCsvPayload 
   return isHeaderBased ? buildHeaderBasedRows(rows, monthStr) : buildCalendarBasedRows(rows, monthStr)
 }
 
-export function ExcelView() {
+type ExcelViewProps = {
+  compactLayout?: boolean
+}
+
+export function ExcelView({ compactLayout = false }: ExcelViewProps) {
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const [currentDate] = useState(new Date())
@@ -621,7 +626,7 @@ export function ExcelView() {
         } else if (parsed.type === 'N') {
             nCount++
             // If 2+N (Pre-OT >= 2), count as E as well (starts 20:00)
-            if (parsed.otPosition === 'pre' && parsed.otHours >= 2) {
+            if (parsed.otPreHours >= 2) {
                 eCount++
             }
         } else if (parsed.type === 'M') {
@@ -1009,11 +1014,17 @@ export function ExcelView() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className={cn(compactLayout ? 'space-y-3 md:space-y-4' : 'space-y-6')}>
       {/* Toolbar */}
-      <div className="flex min-w-0 flex-col gap-2 md:flex-row md:items-center md:justify-between">
+      <div className={cn(
+        'flex min-w-0 flex-col gap-2 md:flex-row md:items-center md:justify-between',
+        compactLayout && 'gap-1.5 md:gap-2'
+      )}>
         <div className="shrink-0 text-lg font-bold">{format(currentDate, 'yyyy년 M월')}</div>
-        <div className="grid min-w-0 w-full grid-cols-1 gap-2 sm:grid-cols-3 md:flex md:w-auto">
+        <div className={cn(
+          'grid min-w-0 w-full grid-cols-1 gap-2 sm:grid-cols-3 md:flex md:w-auto',
+          compactLayout && 'gap-1.5'
+        )}>
           <Button onClick={handleCsvExportClick} variant="outline" className="h-11 w-full gap-2 md:h-9 md:w-auto">
             <Upload className="h-4 w-4 shrink-0" />
             CSV 내보내기
@@ -1089,6 +1100,7 @@ export function ExcelView() {
             dailyWarnings={dailyWarnings}
             wantedOffStats={wantedOffStats}
             onReorderStaffMembers={handleStaffReorder}
+            compactLayout={compactLayout}
         />
       </div>
 

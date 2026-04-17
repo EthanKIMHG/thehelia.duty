@@ -32,7 +32,7 @@ export default function LoginPage() {
 
       if (data.success) {
         setSession(data.session)
-        router.replace('/')
+        router.replace('/excel')
       } else {
         setError(data.error || '로그인에 실패했습니다.')
       }

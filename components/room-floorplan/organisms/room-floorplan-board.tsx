@@ -35,14 +35,14 @@ export function RoomFloorplanBoard({
 }: RoomFloorplanBoardProps) {
   const layout = FLOORPLAN_LAYOUT[floor]
   const roomLookup = new Map(rooms.map((room) => [room.number, room]))
-  const roomSlotClass = 'w-[260px] min-w-[260px] md:w-[300px] md:min-w-[300px] aspect-square min-h-[260px] md:min-h-[300px]'
+  const roomSlotClass = 'w-[260px] min-w-[260px] md:w-[320px] md:min-w-[320px] aspect-auto min-h-[260px] md:min-h-[300px]'
   const bentoTileClass =
-    'rounded-2xl bg-[linear-gradient(180deg,rgba(255,255,255,0.72),rgba(255,255,255,0.5))] p-2 md:p-3'
+    'rounded-2xl bg-[linear-gradient(180deg,rgba(255,255,255,0.72),rgba(255,255,255,0.5))] p-3 md:p-4'
 
   if (rooms.length === 0) {
     return (
-      <section className="rounded-2xl border border-[hsl(var(--fp-border))] bg-[radial-gradient(circle_at_top,_hsl(var(--fp-surface))_0%,_hsl(var(--fp-bg))_62%)] p-4 md:p-6">
-        <div className="rounded-2xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+      <section className="rounded-2xl border border-[hsl(var(--fp-border))] bg-[radial-gradient(circle_at_top,_hsl(var(--fp-surface))_0%,_hsl(var(--fp-bg))_62%)] p-5 md:p-7">
+        <div className="rounded-2xl border border-dashed p-6 text-center text-base text-muted-foreground">
           선택한 조건에 해당하는 객실이 없습니다.
         </div>
       </section>
@@ -97,12 +97,12 @@ export function RoomFloorplanBoard({
   }
 
   return (
-    <section className="rounded-2xl border border-[hsl(var(--fp-border))] bg-[radial-gradient(circle_at_top,_hsl(var(--fp-surface))_0%,_hsl(var(--fp-bg))_62%)] p-4 md:p-6">
+    <section className="rounded-2xl border border-[hsl(var(--fp-border))] bg-[radial-gradient(circle_at_top,_hsl(var(--fp-surface))_0%,_hsl(var(--fp-bg))_62%)] p-5 md:p-7">
       <div className="space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-lg font-bold text-foreground">{floor} 평면도</h3>
-          <span className="text-xs text-muted-foreground">객실 카드를 눌러 상세를 확인하세요.</span>
-          <span className="text-[11px] text-muted-foreground xl:hidden">
+          <h3 className="text-xl font-bold text-foreground md:text-2xl">{floor} 평면도</h3>
+          <span className="text-sm text-muted-foreground">객실 카드를 눌러 상세를 확인하세요.</span>
+          <span className="text-xs text-muted-foreground xl:hidden">
             좌우로 스와이프하여 전체 평면도를 확인하세요.
           </span>
         </div>

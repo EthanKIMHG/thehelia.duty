@@ -1,53 +1,42 @@
 'use client'
 
 import { Button } from '@/components/ui/button'
+import { APP_VIEW_ITEMS, type AppView } from '@/lib/app-views'
 import { cn } from '@/lib/utils'
-import { Calendar, LayoutGrid } from 'lucide-react'
+import { BedDouble, Calendar, LayoutGrid } from 'lucide-react'
+import Link from 'next/link'
 
 interface ViewSwitcherProps {
-  currentView: 'excel' | 'calendar' | 'room'
-  onViewChange: (view: 'excel' | 'calendar' | 'room') => void
+  currentView: AppView
 }
 
-export function ViewSwitcher({ currentView, onViewChange }: ViewSwitcherProps) {
+const getIcon = (view: AppView) => {
+  if (view === 'calendar') return Calendar
+  if (view === 'room-floor') return BedDouble
+  return LayoutGrid
+}
+
+export function ViewSwitcher({ currentView }: ViewSwitcherProps) {
   return (
     <div className="flex items-center space-x-2 bg-muted p-1 rounded-lg">
-      <Button
-        variant="ghost"
-        size="sm"
-        className={cn(
-          "flex-1",
-          currentView === 'excel' && "bg-background shadow-sm"
-        )}
-        onClick={() => onViewChange('excel')}
-      >
-        <LayoutGrid className="w-4 h-4 mr-2" />
-        엑셀 뷰
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        className={cn(
-          "flex-1",
-          currentView === 'calendar' && "bg-background shadow-sm"
-        )}
-        onClick={() => onViewChange('calendar')}
-      >
-        <Calendar className="w-4 h-4 mr-2" />
-        캘린더 뷰
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        className={cn(
-          "flex-1",
-          currentView === 'room' && "bg-background shadow-sm"
-        )}
-        onClick={() => onViewChange('room')}
-      >
-        <LayoutGrid className="w-4 h-4 mr-2" />
-        객실 현황
-      </Button>
+      {APP_VIEW_ITEMS.map(({ href, label, view }) => {
+        const Icon = getIcon(view)
+
+        return (
+          <Button
+            key={view}
+            asChild
+            variant="ghost"
+            size="sm"
+            className={cn('flex-1', currentView === view && 'bg-background shadow-sm')}
+          >
+            <Link href={href}>
+              <Icon className="mr-2 h-4 w-4" />
+              {label}
+            </Link>
+          </Button>
+        )
+      })}
     </div>
   )
 }

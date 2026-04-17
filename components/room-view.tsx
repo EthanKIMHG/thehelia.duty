@@ -680,8 +680,8 @@ export function RoomView() {
               <CardContent className="p-3 md:p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-[11px] md:text-xs text-muted-foreground">한국시간 {kstLabel} 기준</p>
-                    <p className="text-sm md:text-base font-bold">오늘 입실/퇴실 안내</p>
+                    <p className="text-xs text-muted-foreground md:text-sm">한국시간 {kstLabel} 기준</p>
+                    <p className="text-base font-bold md:text-lg">오늘 입실/퇴실 안내</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <Button
@@ -710,7 +710,7 @@ export function RoomView() {
                 {syncFeedback && (
                   <div
                     className={cn(
-                      'mt-2 rounded-lg border px-3 py-2 text-xs',
+                      'mt-2 rounded-lg border px-3 py-2 text-sm',
                       syncFeedback.type === 'success'
                         ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
                         : 'border-red-200 bg-red-50 text-red-800'
@@ -722,17 +722,17 @@ export function RoomView() {
 
                 {syncResult && (
                   <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2">
-                    <p className="text-xs font-semibold text-rose-900">퇴실 대상 업데이트 안내</p>
+                    <p className="text-sm font-semibold text-rose-900">퇴실 대상 업데이트 안내</p>
                     {syncResult.completed_count > 0 ? (
                       <>
-                        <p className="mt-1 text-xs text-rose-800">
+                        <p className="mt-1 text-sm text-rose-800">
                           데이터 업데이트 시 아래 산모를 퇴실완료 처리했습니다.
                         </p>
                         <div className="mt-2 max-h-[116px] overflow-y-auto space-y-1 pr-1">
                           {syncResult.completed.map((stay) => (
                             <div
                               key={`completed-${stay.id}`}
-                              className="rounded border border-rose-200 bg-white/70 px-2 py-1 text-xs text-rose-900"
+                              className="rounded border border-rose-200 bg-white/70 px-2 py-1 text-sm text-rose-900"
                             >
                               {stay.room_number}호 {stay.mother_name} 산모 ({formatShortDate(stay.check_out_date)} 퇴실)
                             </div>
@@ -740,7 +740,7 @@ export function RoomView() {
                         </div>
                       </>
                     ) : (
-                      <p className="mt-1 text-xs text-rose-800">
+                      <p className="mt-1 text-sm text-rose-800">
                         이번 업데이트에서 퇴실완료 처리된 산모가 없습니다.
                       </p>
                     )}
@@ -912,7 +912,7 @@ export function RoomView() {
                   </Button>
                 ))}
               </div>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-sm text-muted-foreground">
                 {isMobileViewport
                   ? '모바일에서는 층별 객실 목록을 먼저 보여주고, 평면도는 필요할 때 펼쳐 확인할 수 있습니다.'
                   : isFinePointerDevice === true
@@ -925,8 +925,8 @@ export function RoomView() {
               <section className="space-y-4 rounded-2xl border border-[hsl(var(--fp-border))] bg-[hsl(var(--fp-surface))] p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="space-y-1">
-                    <h4 className="text-sm font-semibold">모바일 객실 목록</h4>
-                    <p className="text-xs text-muted-foreground">
+                    <h4 className="text-base font-semibold">모바일 객실 목록</h4>
+                    <p className="text-sm text-muted-foreground">
                       목록에서 객실을 선택해 상세를 수정하고, 평면도는 보조로 확인합니다.
                     </p>
                   </div>
@@ -1008,8 +1008,8 @@ export function RoomView() {
             <div className="grid gap-3 lg:grid-cols-[1fr_1.1fr]">
               <RoomStatusLegend />
               <section className="rounded-2xl border border-[hsl(var(--fp-border))] bg-[hsl(var(--fp-surface))] p-4">
-                <h4 className="text-sm font-semibold">빠른 안내</h4>
-                <ul className="mt-3 space-y-1 text-xs text-muted-foreground">
+                <h4 className="text-base font-semibold">빠른 안내</h4>
+                <ul className="mt-3 space-y-1.5 text-sm text-muted-foreground">
                   <li>객실 카드 클릭 시 기존 상세 편집 시트가 열립니다.</li>
                   <li>결번 객실(504, 604)은 레이아웃에서 제외되었습니다.</li>
                   <li>
@@ -1194,15 +1194,15 @@ function PrimaryStatCard({
         onClick && 'cursor-pointer transition-transform hover:-translate-y-0.5 hover:shadow-md'
       )}
     >
-      <CardContent className="p-5">
+      <CardContent className="p-5 md:p-6">
         <div className="flex items-start justify-between">
           <div className="space-y-1">
-            <p className="text-sm font-medium">{title}</p>
-            {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
+            <p className="text-base font-medium md:text-lg">{title}</p>
+            {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
           </div>
-          <div className="rounded-full bg-white/70 p-2">{icon}</div>
+          <div className="rounded-full bg-white/70 p-2.5">{icon}</div>
         </div>
-        <p className="mt-5 text-4xl md:text-5xl font-black tracking-tight leading-none">{value}</p>
+        <p className="mt-5 text-5xl font-black leading-none tracking-tight md:text-6xl">{value}</p>
       </CardContent>
     </Card>
   )
@@ -1237,9 +1237,9 @@ function SecondaryStatCard({
         onClick && 'cursor-pointer transition-transform hover:-translate-y-0.5 hover:shadow-sm'
       )}
     >
-      <CardContent className="px-4 py-3 flex items-center justify-between">
-        <span className="text-sm text-muted-foreground">{title}</span>
-        <span className="text-2xl font-extrabold">{value}</span>
+      <CardContent className="flex items-center justify-between px-4 py-3.5">
+        <span className="text-base text-muted-foreground">{title}</span>
+        <span className="text-3xl font-extrabold">{value}</span>
       </CardContent>
     </Card>
   )

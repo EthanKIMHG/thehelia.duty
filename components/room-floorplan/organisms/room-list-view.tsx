@@ -30,7 +30,7 @@ export function RoomListView({
 }: RoomListViewProps) {
   if (rooms.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+      <div className="rounded-2xl border border-dashed p-6 text-center text-base text-muted-foreground">
         선택한 조건에 해당하는 객실이 없습니다.
       </div>
     )
