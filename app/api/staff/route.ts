@@ -1,3 +1,4 @@
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { supabase } from '@/lib/supabase';
 import { Staff } from '@/types';
 import { NextResponse } from 'next/server';
@@ -76,8 +77,9 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Missing id' }, { status: 400 });
     }
 
-    // Delete related records first to avoid FK constraint errors
-    await supabase.from('wanted_offs').delete().eq('staff_id', id);
+    // Delete related records first to avoid FK constraint errors.
+    // wanted_offs is protected with RLS, so server-side maintenance uses service role.
+    await getSupabaseAdmin().from('wanted_offs').delete().eq('staff_id', id);
     await supabase.from('schedules').delete().eq('staff_id', id);
 
     const { error } = await supabase

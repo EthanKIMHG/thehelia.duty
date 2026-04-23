@@ -22,9 +22,16 @@ CREATE TABLE IF NOT EXISTS wanted_offs (
 );
 
 -- RLS Policies (if enabled/needed)
-ALTER TABLE wanted_offs ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Allow all access to wanted_offs for authenticated" ON wanted_offs;
-CREATE POLICY "Allow all access to wanted_offs for authenticated" ON wanted_offs FOR ALL USING (auth.role() = 'authenticated');
+ALTER TABLE public.wanted_offs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all access to wanted_offs for authenticated" ON public.wanted_offs;
+CREATE POLICY "Allow all access to wanted_offs for authenticated"
+  ON public.wanted_offs
+  FOR ALL
+  TO authenticated
+  USING (true)
+  WITH CHECK (true);
+REVOKE ALL ON TABLE public.wanted_offs FROM anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.wanted_offs TO authenticated, service_role;
 
 -- -----------------------------------------------------------------------------
 -- Read optimization helpers
@@ -42,7 +49,8 @@ $$;
 -- Room snapshot for room dashboard/list rendering
 -- Recreate to ensure latest stays columns are reflected in JSON payload.
 DROP VIEW IF EXISTS public.v_room_snapshot;
-CREATE VIEW public.v_room_snapshot AS
+CREATE VIEW public.v_room_snapshot
+WITH (security_invoker=on) AS
 SELECT
   r.room_number,
   r.room_type,
@@ -66,10 +74,12 @@ LEFT JOIN LATERAL (
     AND s.status = 'upcoming'
 ) u ON TRUE;
 
-GRANT SELECT ON public.v_room_snapshot TO anon, authenticated, service_role;
+REVOKE ALL ON TABLE public.v_room_snapshot FROM anon, authenticated;
+GRANT SELECT ON TABLE public.v_room_snapshot TO service_role;
 
 -- KST dashboard summary (single-row view)
-CREATE OR REPLACE VIEW public.v_dashboard_stats_kst AS
+CREATE OR REPLACE VIEW public.v_dashboard_stats_kst
+WITH (security_invoker=on) AS
 WITH k AS (
   SELECT public.kst_today() AS base_date
 )
@@ -105,10 +115,12 @@ FROM k
 LEFT JOIN stays s ON TRUE
 GROUP BY k.base_date;
 
-GRANT SELECT ON public.v_dashboard_stats_kst TO anon, authenticated, service_role;
+REVOKE ALL ON TABLE public.v_dashboard_stats_kst FROM anon, authenticated;
+GRANT SELECT ON TABLE public.v_dashboard_stats_kst TO service_role;
 
 -- KST dashboard list source (for check-in/out/newborn/mother dialogs)
-CREATE OR REPLACE VIEW public.v_dashboard_stays_kst AS
+CREATE OR REPLACE VIEW public.v_dashboard_stays_kst
+WITH (security_invoker=on) AS
 WITH k AS (
   SELECT public.kst_today() AS base_date
 )
@@ -137,15 +149,18 @@ FROM stays s
 CROSS JOIN k
 WHERE s.status IN ('active', 'upcoming');
 
-GRANT SELECT ON public.v_dashboard_stays_kst TO anon, authenticated, service_role;
+REVOKE ALL ON TABLE public.v_dashboard_stays_kst FROM anon, authenticated;
+GRANT SELECT ON TABLE public.v_dashboard_stays_kst TO service_role;
 
 -- Completed history projection
-CREATE OR REPLACE VIEW public.v_stay_history AS
+CREATE OR REPLACE VIEW public.v_stay_history
+WITH (security_invoker=on) AS
 SELECT *
 FROM stays
 WHERE status = 'completed';
 
-GRANT SELECT ON public.v_stay_history TO anon, authenticated, service_role;
+REVOKE ALL ON TABLE public.v_stay_history FROM anon, authenticated;
+GRANT SELECT ON TABLE public.v_stay_history TO service_role;
 
 -- -----------------------------------------------------------------------------
 -- Indexes for frequent filters/sorts
