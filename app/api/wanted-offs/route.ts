@@ -1,4 +1,5 @@
-import { getSupabaseAdmin } from '@/lib/supabase-admin'
+
+import { supabase } from '@/lib/supabase'
 import { NextResponse } from 'next/server'
 
 const getErrorMessage = (error: unknown) => {
@@ -11,7 +12,6 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const month = searchParams.get('month') // YYYY-MM
   const staffId = searchParams.get('staff_id')
-  const supabase = getSupabaseAdmin()
 
   let query = supabase.from('wanted_offs').select('*')
 
@@ -38,7 +38,6 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const { staff_id, date } = await request.json()
-    const supabase = getSupabaseAdmin()
 
     if (!staff_id || !date) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
@@ -87,7 +86,6 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   try {
     const { staff_id, date } = await request.json()
-    const supabase = getSupabaseAdmin()
 
     if (!staff_id || !date) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })

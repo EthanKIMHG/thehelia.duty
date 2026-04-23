@@ -69,7 +69,7 @@ export function RoomNode({
   const newbornWeightSummary = newbornProfiles
     .map((baby, idx) => {
       const value = baby.weight
-      if (value === undefined || value === null) return ''
+      if (value === undefined || value === null || value === '') return ''
       const numeric = typeof value === 'number' ? value : Number(value)
       if (!Number.isFinite(numeric)) return ''
       return newbornProfiles.length > 1 ? `아기${idx + 1} ${numeric}kg` : `${numeric}kg`

@@ -1,10 +1,9 @@
-import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { supabase } from '@/lib/supabase';
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from('v_room_snapshot')
     .select('*')
