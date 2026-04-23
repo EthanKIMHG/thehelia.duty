@@ -9,10 +9,17 @@ type DashboardStayRow = {
   mother_name: string
   baby_count: number
   baby_names?: string[] | null
-  baby_profiles?: Array<{ name?: string | null; gender?: string | null; weight?: number | null }> | null
+  baby_profiles?: Array<{
+    name?: string | null
+    gender?: string | null
+    weight?: number | null
+    gestational_age?: string | null
+    birth_order?: '1st' | '2nd' | '3rd' | null
+  }> | null
   gender?: string | null
   baby_weight?: number | null
   birth_hospital?: string | null
+  delivery_type?: 'N/D' | 'C/S' | null
   check_in_date: string
   check_out_date: string
   edu_date?: string | null
@@ -32,10 +39,17 @@ type StayItem = {
   mother_name: string
   baby_count: number
   baby_names?: string[]
-  baby_profiles?: Array<{ name?: string | null; gender?: string | null; weight?: number | null }>
+  baby_profiles?: Array<{
+    name?: string | null
+    gender?: string | null
+    weight?: number | null
+    gestational_age?: string | null
+    birth_order?: '1st' | '2nd' | '3rd' | null
+  }>
   gender?: string | null
   baby_weight?: number | null
   birth_hospital?: string | null
+  delivery_type?: 'N/D' | 'C/S' | null
   check_in_date: string
   check_out_date: string
   edu_date?: string
@@ -53,6 +67,7 @@ const toStayItem = (row: DashboardStayRow): StayItem => ({
   gender: row.gender || null,
   baby_weight: row.baby_weight ?? null,
   birth_hospital: row.birth_hospital || null,
+  delivery_type: row.delivery_type || null,
   check_in_date: row.check_in_date,
   check_out_date: row.check_out_date,
   edu_date: row.edu_date || undefined,

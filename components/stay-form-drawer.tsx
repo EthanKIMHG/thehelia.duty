@@ -37,6 +37,8 @@ interface BabyProfileStored {
   name?: string | null
   gender?: string | null
   weight?: number | null
+  gestational_age?: string | null
+  birth_order?: '1st' | '2nd' | '3rd' | null
 }
 
 interface Stay {
@@ -49,6 +51,7 @@ interface Stay {
   gender?: string | null
   baby_weight?: number | null
   birth_hospital?: string | null
+  delivery_type?: 'N/D' | 'C/S' | null
   check_in_date: string
   check_out_date: string
   edu_date?: string
@@ -68,12 +71,15 @@ type BabyProfileForm = {
   name: string
   gender: string
   weight: string
+  gestational_age: string
+  birth_order: '1st' | '2nd' | '3rd' | ''
 }
 
 type FormData = {
   mother_name: string
   baby_count: number
   birth_hospital: string
+  delivery_type: 'N/D' | 'C/S' | ''
   check_in_date: string
   stay_period: StayPeriod
   check_out_date: string
@@ -87,10 +93,17 @@ type StayPayload = {
   mother_name: string
   baby_count: number
   baby_names: string[]
-  baby_profiles: Array<{ name: string | null; gender: string | null; weight: number | null }>
+  baby_profiles: Array<{
+    name: string | null
+    gender: string | null
+    weight: number | null
+    gestational_age: string | null
+    birth_order: '1st' | '2nd' | '3rd' | null
+  }>
   gender: string | null
   baby_weight: number | null
   birth_hospital: string | null
+  delivery_type: 'N/D' | 'C/S' | null
   check_in_date: string
   check_out_date: string
   edu_date: string | null
@@ -101,7 +114,9 @@ type StayPayload = {
 const createEmptyBabyProfile = (): BabyProfileForm => ({
   name: '',
   gender: '',
-  weight: ''
+  weight: '',
+  gestational_age: '',
+  birth_order: ''
 })
 
 const STAY_PERIOD_CONFIG: Record<Exclude<StayPeriod, 'custom'>, { label: string; checkoutOffsetDays: number }> = {
@@ -241,6 +256,8 @@ const buildStayPayload = (formData: FormData): StayPayload => {
       name: profile.name.trim() || null,
       gender: profile.gender.trim() || null,
       weight: parseWeight(profile.weight),
+      gestational_age: profile.gestational_age.trim() || null,
+      birth_order: profile.birth_order || null,
     }))
 
   const babyNames = normalizedProfiles
@@ -262,6 +279,7 @@ const buildStayPayload = (formData: FormData): StayPayload => {
     gender: mergedGender,
     baby_weight: firstBabyWeight,
     birth_hospital: formData.birth_hospital.trim() || null,
+    delivery_type: formData.delivery_type || null,
     check_in_date: formData.check_in_date,
     check_out_date: formData.check_out_date,
     edu_date: formData.edu_date || null,
@@ -297,6 +315,7 @@ export function StayFormDrawer({
       mother_name: '',
       baby_count: 1,
       birth_hospital: '',
+      delivery_type: '',
       check_in_date: today,
       stay_period: defaultPeriod,
       check_out_date: derived?.check_out_date || today,
@@ -414,7 +433,7 @@ export function StayFormDrawer({
   }
 
   const handleBabyCountChange = (value: string) => {
-    const count = Math.max(1, Math.min(4, Number(value) || 1))
+    const count = Math.max(0, Math.min(4, Number(value) || 0))
     setFormData((prev) => ({
       ...prev,
       baby_count: count,
@@ -443,11 +462,18 @@ export function StayFormDrawer({
       (fromStoredProfiles.length > 0 ? fromStoredProfiles : Array.from({ length: stay.baby_count }, (_, idx) => ({
         name: stay.baby_names?.[idx] || '',
         gender: idx === 0 ? stay.gender || '' : '',
-        weight: idx === 0 ? stay.baby_weight ?? null : null
+        weight: idx === 0 ? stay.baby_weight ?? null : null,
+        gestational_age: '',
+        birth_order: ''
       }))).map((profile) => ({
         name: profile.name?.toString() || '',
         gender: profile.gender?.toString() || '',
-        weight: profile.weight !== null && profile.weight !== undefined ? String(profile.weight) : ''
+        weight: profile.weight !== null && profile.weight !== undefined ? String(profile.weight) : '',
+        gestational_age: profile.gestational_age?.toString() || '',
+        birth_order:
+          profile.birth_order === '1st' || profile.birth_order === '2nd' || profile.birth_order === '3rd'
+            ? profile.birth_order
+            : ''
       })),
       stay.baby_count
     )
@@ -457,6 +483,7 @@ export function StayFormDrawer({
       mother_name: stay.mother_name,
       baby_count: stay.baby_count,
       birth_hospital: stay.birth_hospital || '',
+      delivery_type: stay.delivery_type || '',
       check_in_date: stay.check_in_date,
       stay_period: inferStayPeriod(stay.check_in_date, stay.check_out_date),
       check_out_date: stay.check_out_date,
@@ -557,14 +584,16 @@ export function StayFormDrawer({
       .map((gender) => gender.trim())
       .filter((gender) => gender.length > 0)
 
-    const displayBabyCount = Math.max(1, stay.baby_count || 1)
+    const displayBabyCount = stay.baby_count ?? 0
     const displayBabies = Array.from({ length: displayBabyCount }, (_, idx) => {
       const profile = stay.baby_profiles?.[idx]
       const name = profile?.name?.trim() || nameFallbacks[idx] || null
       const gender = profile?.gender?.trim() || splitGenders[idx] || (idx === 0 ? stay.gender || null : null)
       const weight = profile?.weight ?? (idx === 0 ? stay.baby_weight : null)
+      const gestationalAge = profile?.gestational_age?.trim() || null
+      const birthOrder = profile?.birth_order || null
 
-      return { name, gender, weight }
+      return { name, gender, weight, gestationalAge, birthOrder }
     })
 
     const babyNameSummary = displayBabies
@@ -595,7 +624,7 @@ export function StayFormDrawer({
                   <h3 className="truncate text-xl font-bold leading-none">{stay.mother_name}</h3>
                 </div>
                 <p className="truncate text-sm text-muted-foreground">
-                  태명 {babyNameSummary || '-'}
+                  {displayBabyCount === 0 ? '신생아 0명' : `태명 ${babyNameSummary || '-'}`}
                 </p>
               </div>
               <div className="flex items-center">
@@ -618,7 +647,11 @@ export function StayFormDrawer({
           <div className="space-y-4 px-4 py-4 sm:px-5">
             <div className={cn('space-y-2 rounded-xl border p-3', getNewbornSurfaceClass(newbornTone))}>
               <p className="text-xs font-semibold tracking-wide text-muted-foreground">신생아 및 산모 정보</p>
-              {displayBabyCount > 1 ? (
+              {displayBabyCount === 0 ? (
+                <div className="rounded-xl border border-dashed border-slate-200 bg-white/70 px-3.5 py-4 text-sm text-muted-foreground">
+                  신생아 0명으로 기록된 입실 정보입니다.
+                </div>
+              ) : displayBabyCount > 1 ? (
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   {displayBabies.map((baby, idx) => (
                     <div
@@ -630,6 +663,8 @@ export function StayFormDrawer({
                         <p><span className="text-muted-foreground">태명</span> <span className="font-medium">{baby.name || '-'}</span></p>
                         <p><span className="text-muted-foreground">성별</span> <span className="font-medium">{baby.gender || '-'}</span></p>
                         <p><span className="text-muted-foreground">몸무게</span> <span className="font-medium">{formatWeight(baby.weight)}</span></p>
+                        <p><span className="text-muted-foreground">제태주수</span> <span className="font-medium">{baby.gestationalAge || '-'}</span></p>
+                        <p><span className="text-muted-foreground">출생순서</span> <span className="font-medium">{baby.birthOrder || '-'}</span></p>
                       </div>
                     </div>
                   ))}
@@ -639,12 +674,16 @@ export function StayFormDrawer({
                   <InfoTile label="태명" value={displayBabies[0]?.name || '-'} tone={newbornTone} />
                   <InfoTile label="성별" value={displayBabies[0]?.gender || '-'} tone={newbornTone} />
                   <InfoTile label="몸무게" value={formatWeight(displayBabies[0]?.weight)} tone={newbornTone} />
+                  <InfoTile label="제태주수" value={displayBabies[0]?.gestationalAge || '-'} tone={newbornTone} />
+                  <InfoTile label="출생순서" value={displayBabies[0]?.birthOrder || '-'} tone={newbornTone} />
                   <InfoTile label="출산병원" value={stay.birth_hospital || '-'} tone="default" />
+                  <InfoTile label="분만형태" value={stay.delivery_type || '-'} tone="default" />
                 </div>
               )}
               {displayBabyCount > 1 && (
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <InfoTile label="출산병원" value={stay.birth_hospital || '-'} tone="default" />
+                  <InfoTile label="분만형태" value={stay.delivery_type || '-'} tone="default" />
                   <InfoTile label="전체 태명" value={babyNameSummary || '-'} tone={newbornTone} />
                 </div>
               )}
@@ -757,6 +796,28 @@ export function StayFormDrawer({
                     </div>
                   </div>
 
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="delivery_type">분만형태</Label>
+                      <Select
+                        value={formData.delivery_type || 'none'}
+                        onValueChange={(value) => setFormData((prev) => ({
+                          ...prev,
+                          delivery_type: value === 'none' ? '' : value as 'N/D' | 'C/S'
+                        }))}
+                      >
+                        <SelectTrigger id="delivery_type">
+                          <SelectValue placeholder="선택" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">미입력</SelectItem>
+                          <SelectItem value="N/D">N/D</SelectItem>
+                          <SelectItem value="C/S">C/S</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
                   <div className="space-y-2">
                     <Label htmlFor="status">상태</Label>
                     <Select
@@ -791,6 +852,7 @@ export function StayFormDrawer({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="0">0명</SelectItem>
                         <SelectItem value="1">1명</SelectItem>
                         <SelectItem value="2">2명</SelectItem>
                         <SelectItem value="3">3명</SelectItem>
@@ -798,6 +860,12 @@ export function StayFormDrawer({
                       </SelectContent>
                     </Select>
                   </div>
+
+                  {formData.baby_count === 0 && (
+                    <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
+                      신생아 0명으로 기록합니다. 산모 정보와 일정 정보만 저장됩니다.
+                    </div>
+                  )}
 
                   {formData.baby_count === 2 && (
                     <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700">
@@ -815,7 +883,12 @@ export function StayFormDrawer({
                         formData.baby_count === 2 && 'border-primary/20 shadow-sm'
                       )}>
                         <CardHeader className="pb-2">
-                          <CardTitle className="text-sm font-semibold">아기 {index + 1}</CardTitle>
+                          <CardTitle className="flex items-center justify-between gap-2 text-sm font-semibold">
+                            <span>아기 {index + 1}</span>
+                            <span className="rounded-full border bg-white px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                              chart sheet
+                            </span>
+                          </CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-3">
                           <div className="space-y-2">
@@ -854,6 +927,45 @@ export function StayFormDrawer({
                               onChange={(e) => updateBabyProfile(index, 'weight', e.target.value)}
                               placeholder="3.2"
                             />
+                          </div>
+
+                          <div className="rounded-xl border border-dashed border-slate-200 bg-white/80 p-3">
+                            <div className="mb-3 flex items-center justify-between gap-2">
+                              <p className="text-xs font-semibold text-slate-600">간호 차트 기록</p>
+                              <span className="text-[11px] text-muted-foreground">GA / 출생순서</span>
+                            </div>
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                              <div className="space-y-1.5">
+                                <Label htmlFor={`baby_gestational_age_${index}`} className="text-xs">제태주수</Label>
+                                <Input
+                                  id={`baby_gestational_age_${index}`}
+                                  value={baby.gestational_age}
+                                  onChange={(e) => updateBabyProfile(index, 'gestational_age', e.target.value)}
+                                  placeholder="38+2"
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label htmlFor={`baby_birth_order_${index}`} className="text-xs">출생순서</Label>
+                                <Select
+                                  value={baby.birth_order || 'none'}
+                                  onValueChange={(value) => updateBabyProfile(
+                                    index,
+                                    'birth_order',
+                                    value === 'none' ? '' : value
+                                  )}
+                                >
+                                  <SelectTrigger id={`baby_birth_order_${index}`}>
+                                    <SelectValue placeholder="선택" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="none">미입력</SelectItem>
+                                    <SelectItem value="1st">1st</SelectItem>
+                                    <SelectItem value="2nd">2nd</SelectItem>
+                                    <SelectItem value="3rd">3rd</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
                           </div>
                         </CardContent>
                       </Card>

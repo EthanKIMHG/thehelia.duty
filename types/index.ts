@@ -34,6 +34,8 @@ export interface BabyProfile {
   name?: string | null;
   gender?: string | null;
   weight?: number | null;
+  gestational_age?: string | null;
+  birth_order?: '1st' | '2nd' | '3rd' | null;
 }
 
 export interface Stay {
@@ -46,6 +48,7 @@ export interface Stay {
   gender?: string | null;
   baby_weight?: number | null;
   birth_hospital?: string | null;
+  delivery_type?: 'N/D' | 'C/S' | null;
   check_in_date: string;
   check_out_date: string;
   edu_date?: string;

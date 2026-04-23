@@ -596,7 +596,7 @@ export function ExcelView({ compactLayout = false }: ExcelViewProps) {
       staysData.forEach(stay => {
         const checkIn = stay.check_in_date
         const checkOut = stay.check_out_date
-        const babies = stay.baby_count || 1
+        const babies = stay.baby_count ?? 0
 
         // After 10 AM: new arrivals are counted, departures are removed
         if (checkIn <= dayObj.dateStr && checkOut > dayObj.dateStr) {

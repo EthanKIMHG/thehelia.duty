@@ -1,13 +1,7 @@
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
-
-// Create Admin client to bypass RLS for server-side operations
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-)
 
 type StayStatus = 'upcoming' | 'active' | 'completed'
 
@@ -15,6 +9,8 @@ type BabyProfilePayload = {
   name?: string | null
   gender?: string | null
   weight?: string | number | null
+  gestational_age?: string | null
+  birth_order?: '1st' | '2nd' | '3rd' | null
 }
 
 type StayPayload = {
@@ -31,6 +27,7 @@ type StayPayload = {
   gender?: string | null
   baby_weight?: string | number | null
   birth_hospital?: string | null
+  delivery_type?: 'N/D' | 'C/S' | null
   status?: StayStatus
 }
 
@@ -47,6 +44,7 @@ type StayEditableSnapshot = {
   gender: string | null
   baby_weight: number | null
   birth_hospital: string | null
+  delivery_type: 'N/D' | 'C/S' | null
   status: StayStatus | null
 }
 
@@ -74,13 +72,13 @@ function normalizeStayPayload(payload: StayPayload) {
         name: profile?.name?.trim() || null,
         gender: profile?.gender?.trim() || null,
         weight: Number.isFinite(parsedWeight) ? parsedWeight : null,
+        gestational_age: profile?.gestational_age?.trim() || null,
+        birth_order: profile?.birth_order || null,
       }
     })
     : undefined
 
-  const babyProfiles = mappedBabyProfiles && mappedBabyProfiles.length > 0
-    ? mappedBabyProfiles
-    : undefined
+  const babyProfiles = mappedBabyProfiles ?? undefined
 
   const rawWeight = payload.baby_weight
   const parsedWeight =
@@ -113,6 +111,7 @@ function normalizeStayPayload(payload: StayPayload) {
     notes: payload.notes || null,
     gender: mergedGender || payload.gender || null,
     birth_hospital: payload.birth_hospital || null,
+    delivery_type: payload.delivery_type || null,
     baby_weight: normalizedWeight,
   }
 }
@@ -134,6 +133,7 @@ function getDateStringInTimeZone(timeZone: string, baseDate = new Date()) {
 }
 
 export async function GET(request: Request) {
+  const supabaseAdmin = getSupabaseAdmin()
   const { searchParams } = new URL(request.url);
   const month = searchParams.get('month'); // YYYY-MM (optional)
   const status = searchParams.get('status');
@@ -182,6 +182,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const supabaseAdmin = getSupabaseAdmin()
     const body = await request.json() as StayPayload;
     const payload = normalizeStayPayload(body);
     console.log('Creating stay with body:', body);
@@ -207,6 +208,7 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
+    const supabaseAdmin = getSupabaseAdmin()
     const body = await request.json() as StayPayload;
     const { id, ...updateData } = body;
 
@@ -217,7 +219,7 @@ export async function PUT(request: Request) {
     const { data: existingStay, error: existingError } = await supabaseAdmin
       .from('stays')
       .select(
-        'id, room_number, mother_name, baby_count, baby_names, baby_profiles, check_in_date, check_out_date, edu_date, notes, gender, baby_weight, birth_hospital, status'
+        'id, room_number, mother_name, baby_count, baby_names, baby_profiles, check_in_date, check_out_date, edu_date, notes, gender, baby_weight, birth_hospital, delivery_type, status'
       )
       .eq('id', id)
       .single();
@@ -227,6 +229,26 @@ export async function PUT(request: Request) {
     }
 
     const existingSnapshot = existingStay as unknown as StayEditableSnapshot
+
+    const updateKeys = Object.entries(updateData)
+      .filter(([, value]) => value !== undefined)
+      .map(([key]) => key)
+
+    if (updateKeys.length === 1 && updateData.room_number) {
+      const { data, error } = await supabaseAdmin
+        .from('stays')
+        .update({ room_number: updateData.room_number })
+        .eq('id', id)
+        .select();
+
+      if (error) {
+        console.error('Supabase room move error:', error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+
+      return NextResponse.json(data);
+    }
+
     const mergedPayload: StayPayload = {
       room_number: existingSnapshot.room_number ?? undefined,
       mother_name: existingSnapshot.mother_name ?? undefined,
@@ -240,6 +262,7 @@ export async function PUT(request: Request) {
       gender: existingSnapshot.gender ?? undefined,
       baby_weight: existingSnapshot.baby_weight ?? undefined,
       birth_hospital: existingSnapshot.birth_hospital ?? undefined,
+      delivery_type: existingSnapshot.delivery_type ?? undefined,
       status: existingSnapshot.status ?? undefined,
       ...updateData,
     }
@@ -296,6 +319,7 @@ export async function PUT(request: Request) {
 
 export async function PATCH() {
   try {
+    const supabaseAdmin = getSupabaseAdmin()
     const todayKst = getDateStringInTimeZone('Asia/Seoul')
     // 1) Complete active stays that have checkout date today or earlier
     const { data: checkoutRows, error: checkoutRowsError } = await supabaseAdmin
@@ -402,6 +426,7 @@ export async function PATCH() {
 
 export async function DELETE(request: Request) {
   try {
+    const supabaseAdmin = getSupabaseAdmin()
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 

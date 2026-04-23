@@ -181,7 +181,7 @@ export function MobileExcelView({ staffData }: MobileExcelViewProps) {
       let checkouts = 0
 
       weekStays.forEach((stay) => {
-        const babies = stay.baby_count || 1
+        const babies = stay.baby_count ?? 0
         if (stay.check_in_date <= dateStr && stay.check_out_date > dateStr) {
           newborns += babies
         }

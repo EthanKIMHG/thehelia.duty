@@ -43,7 +43,7 @@ export function RoomNode({
   const isOccupied = room.status === 'Occupied'
   const nextUpcoming = room.upcomingStays[0]
   const checkoutBadge = getCheckoutBadge(room.checkOutDday)
-  const normalizedCount = Math.max(1, room.babyCount || 1)
+  const normalizedCount = room.babyCount ?? 0
   const profileNameFallbacks = (room.babyNames || [])
     .map((name) => name?.trim())
     .filter((name): name is string => Boolean(name))
@@ -198,15 +198,21 @@ export function RoomNode({
               <Users className="h-4 w-4" />
               신생아 {room.babyCount || 0}명
             </p>
-            <p className="mt-1 whitespace-normal break-keep text-sm font-semibold leading-tight text-foreground">
-              이름: {newbornNameSummary || '-'}
-            </p>
-            <p className="mt-0.5 whitespace-normal break-keep text-sm leading-tight text-muted-foreground">
-              성별: {newbornGenderSummary || '-'}
-            </p>
-            <p className="mt-0.5 whitespace-normal break-keep text-sm leading-tight text-muted-foreground">
-              몸무게: {newbornWeightSummary || '-'}
-            </p>
+            {normalizedCount > 0 ? (
+              <>
+                <p className="mt-1 whitespace-normal break-keep text-sm font-semibold leading-tight text-foreground">
+                  이름: {newbornNameSummary || '-'}
+                </p>
+                <p className="mt-0.5 whitespace-normal break-keep text-sm leading-tight text-muted-foreground">
+                  성별: {newbornGenderSummary || '-'}
+                </p>
+                <p className="mt-0.5 whitespace-normal break-keep text-sm leading-tight text-muted-foreground">
+                  몸무게: {newbornWeightSummary || '-'}
+                </p>
+              </>
+            ) : (
+              <p className="mt-1 text-sm font-medium text-muted-foreground">신생아 없음</p>
+            )}
           </div>
 
           <div className="grid grid-cols-3 gap-1 text-xs">

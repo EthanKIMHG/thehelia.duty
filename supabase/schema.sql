@@ -10,6 +10,7 @@ ALTER TABLE stays
 ADD COLUMN IF NOT EXISTS gender TEXT,
 ADD COLUMN IF NOT EXISTS baby_weight NUMERIC(5,2),
 ADD COLUMN IF NOT EXISTS birth_hospital TEXT,
+ADD COLUMN IF NOT EXISTS delivery_type TEXT CHECK (delivery_type IN ('N/D', 'C/S') OR delivery_type IS NULL),
 ADD COLUMN IF NOT EXISTS baby_profiles JSONB DEFAULT '[]'::jsonb;
 
 -- Wanted Offs Table
@@ -144,7 +145,8 @@ SELECT
   (s.check_out_date = k.base_date AND s.status = 'active') AS is_today_checkout,
   (s.check_in_date = (k.base_date + 1) AND s.status IN ('active', 'upcoming')) AS is_tomorrow_checkin,
   (s.check_out_date = (k.base_date + 1) AND s.status = 'active') AS is_tomorrow_checkout,
-  (s.status = 'active' AND s.check_in_date <= k.base_date AND s.check_out_date > k.base_date) AS is_census
+  (s.status = 'active' AND s.check_in_date <= k.base_date AND s.check_out_date > k.base_date) AS is_census,
+  s.delivery_type
 FROM stays s
 CROSS JOIN k
 WHERE s.status IN ('active', 'upcoming');

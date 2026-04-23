@@ -47,10 +47,13 @@ interface Stay {
     name?: string | null
     gender?: string | null
     weight?: number | null
+    gestational_age?: string | null
+    birth_order?: '1st' | '2nd' | '3rd' | null
   }> | null
   gender?: string | null
   baby_weight?: number | null
   birth_hospital?: string | null
+  delivery_type?: 'N/D' | 'C/S' | null
   check_in_date: string
   check_out_date: string
   edu_date?: string
@@ -157,6 +160,8 @@ type BabyDisplaySource = {
     name?: string | null
     gender?: string | null
     weight?: number | null
+    gestational_age?: string | null
+    birth_order?: '1st' | '2nd' | '3rd' | null
   }> | null
   gender?: string | null
   baby_weight?: number | null
@@ -172,14 +177,16 @@ const getDisplayBabies = (source: BabyDisplaySource) => {
     .map((gender) => gender.trim())
     .filter((gender) => gender.length > 0)
 
-  const count = Math.max(1, source.baby_count || 1)
+  const count = source.baby_count ?? 0
 
   return Array.from({ length: count }, (_, idx) => {
     const profile = source.baby_profiles?.[idx]
     const name = profile?.name?.trim() || nameFallbacks[idx] || null
     const gender = profile?.gender?.trim() || splitGenders[idx] || (idx === 0 ? source.gender || null : null)
     const weight = profile?.weight ?? (idx === 0 ? source.baby_weight ?? null : null)
-    return { name, gender, weight }
+    const gestationalAge = profile?.gestational_age?.trim() || null
+    const birthOrder = profile?.birth_order || null
+    return { name, gender, weight, gestationalAge, birthOrder }
   })
 }
 

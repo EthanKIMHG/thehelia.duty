@@ -292,7 +292,7 @@ function getRequiredPerDate(dates: string[], staysData: StayInput[]) {
     for (const stay of staysData || []) {
       const checkIn = stay.check_in_date
       const checkOut = stay.check_out_date
-      const babies = stay.baby_count || 1
+      const babies = stay.baby_count ?? 0
 
       if (checkIn <= date && checkOut > date) {
         newborns += babies

@@ -26,6 +26,8 @@ export interface FloorplanRoom {
     name?: string | null
     gender?: string | null
     weight?: number | null
+    gestational_age?: string | null
+    birth_order?: '1st' | '2nd' | '3rd' | null
   }> | null
   gender?: string | null
   babyWeight?: number | null
