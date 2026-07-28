@@ -8,6 +8,8 @@ Keep one active document per topic.
 
 - [architecture.md](architecture.md)
   - Product scope, screens, data model, APIs, and runtime structure
+- [servicenow-wanted-off-migration-runbook.md](servicenow-wanted-off-migration-runbook.md)
+  - Current wanted-off implementation baseline, ServiceNow target design, build, migration, cutover, rollback, and operations runbook
 - [design/frontend-guidelines.md](design/frontend-guidelines.md)
   - Shared UI rules, feedback patterns, responsive rules, accessibility
 - [design/mobile-excel.md](design/mobile-excel.md)
